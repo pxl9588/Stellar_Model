@@ -1,9 +1,10 @@
+from math import *
 def STATSTAR():
     # A = [r, P, M_r, L_r, T]
     A = [0, 0, 0, 0, 0]
 
-    # B = [rho, kappa, dlPdlT]
-    B = [0, 0, 0, 0]
+    # B = [rho, kappa]
+    B = [0, 0]
 
     # C = [XCNO, mu]
     C = [0, 0]
@@ -81,21 +82,98 @@ def STATSTAR():
     mu = 1.0 / (2.0 * mass_fractions["X"] + .75 * mass_fractions["Y"] + .5 * mass_fractions["Z"])
 
     # Initialize values of r, P, M_r, L_r, T, rho, kappa, and epsilon at the surface.
+    r = []
+    M_r = []
+    L_r = []
+    T = []
+    P = []
+    rho = []
+    kappa = []
+    epslon = []
+    dlPdlT = []
     r[0] = initial_cond["Rs"]
     M_r[0] = initial_cond["Ms"]
     L_r[0] = initial_cond["Ls"]
     T[0] = initial_cond["T0"]
     P[0] = initial_cond["P0"]
-    if P0 < 0.0 or T0 < 0.0:
+    if initial_cond["P0"] < 0.0 or initial_cond["T0"] < 0.0:
         rho[0] = 0.0
         kappa[0] = 0.0
         epslon[0] = 0.0
     else:
         EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[0], T[0], rho[0], kappa[0],
-            epslon[0], tog_bf, 1, ierr)
+            epslon[0], constants["tog_bf"], 1, ierr)
 
+    constants["kPad"] = 0.3
+    irc = 0
+    dlPdlT[0] = 4.25
+    for i in range(0,zone_boundaries["Nstart"]):
+        ip1 = i + 1
+        STARTMDL(deltar, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], M_r[i], L_r[i],
+                 r[ip1], P[ip1], M_r[ip1], L_r[ip1], T[ip1], constants["tog_bf"], irc)
+        EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[ip1], T[ip1], rho[ip1], kappa[ip1],
+            epslon[ip1], constants["tog_bf"], ip1, ierr)
 
+        # Determine whether convection will be operating in th next zone
+        if i > 1:
+            dlPdlT[ip1] = log(P[ip1]/P[i])/log(T[ip1]/T[i])
+        else:
+            dlPdlT[ip1] = dlPdlT[i]
+        if dlPdlT[ip1] < constants["gamrat"]:
+            irc = 1
+        else:
+            irc = 0
+            constants["kPad"] = P[ip1]/T[ip1]**constants["gamrat"]
 
+        # Test to see whether the surface assumption of constant mass is still valid
+        deltaM = deltar * dMdr(r[ip1], rho[ip1])
+        M_r[ip1] = M_r[i] + deltaM
+        if abs(deltaM) > .001 * initial_cond["Ms"]:
+            if ip1 > 2:
+                ip1 = ip1 - 1
+                # Exit loop
+                continue
+    # End of loop
+
+    # Main integration loop
+    Nsrtp1 = ip1 + 1
+    f_im1 = []
+    dfdr = []
+    f_i = []
+
+    for i in range(Nsrtp1, Nstop):
+        im1 = i -1
+
+        # Initialize the Runge-Kutta routine with zone i - 1 quantites and their derivatives.
+        # The pressure, mass, luminosity and temperature are stored in f_im(0-3).
+        # The derivatives of those quantites with respect to radis are in dfdr(0-3).
+        # The The resulting values for P, M_r, L_r, and T are returned in f_i(0-3)
+
+        f_im1[0] = P[im1]
+        f_im1[1] = M_r[im1]
+        f_im1[2] = L_r[im1]
+        f_im1[3] = T[im1]
+        dfdr[0] = dPdr(r[im1], M_r[im1], rho[im1])
+        dfdr[1] = dMdr(r[im1], rho[im1])
+        dfdr[2] = dLdr(r[im1], rho[im1], epslon[im1])
+        dfdr[3] = dTdr(r[im1], M_r[im1], L_r[im1], T[im1], rho[im1], kappa[im1], mu, irc)
+        RUNGE(f_im1, dfdr, f_i, r[im1], deltar, irc, mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, i, ierr)
+
+        # Update stellar parameters for the next zone, including adding dr to the old radius
+
+        r[i] = r[im1] + deltar
+        P[i] = f_i[0]
+        M_r[i] = f_i[1]
+        L_r[i] = f_i[2]
+        T[i] = f_i[3]
+
+        # Calculate the density, opacity, and energy generation rate for this zone
+        EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[i], T[i], rho[i], kappa[i],
+            epslon[i], constants["tog_bf"], i, ierr)
+
+        # Determine whether convection will be operating in the next zone
+
+        dlPdlT[i] = log(P[i]/P[im1])/log(T[i]/T[im1])
 
 
 
