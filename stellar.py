@@ -1,4 +1,5 @@
 from math import *
+from tabulate import *
 def STATSTAR():
     # A = [r, P, M_r, L_r, T]
     A = [0, 0, 0, 0, 0]
@@ -33,6 +34,9 @@ def STATSTAR():
     #  Igoof {-1,0,1,2,3,4,5} ??????????????????????
     #  ----------------------------------------------
     flags = {"idrflg": 0, "Igoof": -1}
+
+    # Goof Dictionary
+    goof = {1: "1"}
 
     # Nstart number of steps for which starting equations are used
     # Nstop maximum number of allowed zones
@@ -91,6 +95,7 @@ def STATSTAR():
     kappa = []
     epslon = []
     dlPdlT = []
+
     r[0] = initial_cond["Rs"]
     M_r[0] = initial_cond["Ms"]
     L_r[0] = initial_cond["Ls"]
@@ -107,6 +112,8 @@ def STATSTAR():
     constants["kPad"] = 0.3
     irc = 0
     dlPdlT[0] = 4.25
+    ip1 = 0
+
     for i in range(0,zone_boundaries["Nstart"]):
         ip1 = i + 1
         STARTMDL(deltar, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], M_r[i], L_r[i],
@@ -131,49 +138,151 @@ def STATSTAR():
         if abs(deltaM) > .001 * initial_cond["Ms"]:
             if ip1 > 2:
                 ip1 = ip1 - 1
-                # Exit loop
+            else:
                 continue
-    # End of loop
 
-    # Main integration loop
-    Nsrtp1 = ip1 + 1
-    f_im1 = []
-    dfdr = []
-    f_i = []
+        # Main integration loop
+        Nsrtp1 = ip1 + 1
+        f_im1 = []
+        dfdr = []
+        f_i = []
 
-    for i in range(Nsrtp1, Nstop):
-        im1 = i -1
+        for i in range(Nsrtp1, zone_boundaries["Nstop"]):
+            im1 = i - 1
 
-        # Initialize the Runge-Kutta routine with zone i - 1 quantites and their derivatives.
-        # The pressure, mass, luminosity and temperature are stored in f_im(0-3).
-        # The derivatives of those quantites with respect to radis are in dfdr(0-3).
-        # The The resulting values for P, M_r, L_r, and T are returned in f_i(0-3)
+            # Initialize the Runge-Kutta routine with zone i - 1 quantites and their derivatives.
+            # The pressure, mass, luminosity and temperature are stored in f_im(0-3).
+            # The derivatives of those quantites with respect to radis are in dfdr(0-3).
+            # The The resulting values for P, M_r, L_r, and T are returned in f_i(0-3)
 
-        f_im1[0] = P[im1]
-        f_im1[1] = M_r[im1]
-        f_im1[2] = L_r[im1]
-        f_im1[3] = T[im1]
-        dfdr[0] = dPdr(r[im1], M_r[im1], rho[im1])
-        dfdr[1] = dMdr(r[im1], rho[im1])
-        dfdr[2] = dLdr(r[im1], rho[im1], epslon[im1])
-        dfdr[3] = dTdr(r[im1], M_r[im1], L_r[im1], T[im1], rho[im1], kappa[im1], mu, irc)
-        RUNGE(f_im1, dfdr, f_i, r[im1], deltar, irc, mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, i, ierr)
+            f_im1[0] = P[im1]
+            f_im1[1] = M_r[im1]
+            f_im1[2] = L_r[im1]
+            f_im1[3] = T[im1]
+            dfdr[0] = dPdr(r[im1], M_r[im1], rho[im1])
+            dfdr[1] = dMdr(r[im1], rho[im1])
+            dfdr[2] = dLdr(r[im1], rho[im1], epslon[im1])
+            dfdr[3] = dTdr(r[im1], M_r[im1], L_r[im1], T[im1], rho[im1], kappa[im1], mu, irc)
+            RUNGE(f_im1, dfdr, f_i, r[im1], deltar, irc, mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, i, ierr)
 
-        # Update stellar parameters for the next zone, including adding dr to the old radius
+            # Update stellar parameters for the next zone, including adding dr to the old radius
 
-        r[i] = r[im1] + deltar
-        P[i] = f_i[0]
-        M_r[i] = f_i[1]
-        L_r[i] = f_i[2]
-        T[i] = f_i[3]
+            r[i] = r[im1] + deltar
+            P[i] = f_i[0]
+            M_r[i] = f_i[1]
+            L_r[i] = f_i[2]
+            T[i] = f_i[3]
 
-        # Calculate the density, opacity, and energy generation rate for this zone
-        EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[i], T[i], rho[i], kappa[i],
-            epslon[i], constants["tog_bf"], i, ierr)
+            # Calculate the density, opacity, and energy generation rate for this zone
+            EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[i], T[i], rho[i], kappa[i],
+                epslon[i], constants["tog_bf"], i, ierr)
 
-        # Determine whether convection will be operating in the next zone
+            # Determine whether convection will be operating in the next zone
 
-        dlPdlT[i] = log(P[i]/P[im1])/log(T[i]/T[im1])
+            dlPdlT[i] = log(P[i]/P[im1])/log(T[i]/T[im1])
+            if dlPdlT[i] < constants["gamrat"]:
+                irc = 1
+            else:
+                irc = 0
+
+            # Check if the center has been reached. If so, set Igoof and estimate the central conditions:
+            # rhocor, epscor, Pcore, Tcore.
+
+            if r[i] < abs(deltar) and (L_r[i] > .1 * initial_cond["Ls"] or M_r[i] > .01 * initial_cond["Ms"]):
+                Igoof = 6
+            elif L_r[i] < 0.0:
+                Igoof = 5
+                rhocor = M_r[i]/(4/3*pi*r[i]**3)
+                if M_r[i] != 0:
+                    epscor = L_r[i]/M_r[i]
+                else:
+                    epscor = 0.0
+                Pcore = P[i] + 2/3 * pi * constants["G"] * rhocor**2 * r[i]**2
+                Tcore = Pcore * mu * constants["m_H"]/(rhocor*constants["k_B"])
+            elif M_r[i] < 0.0:
+                Igoof = 4
+                rhocor = 0.0
+                epscor = 0.0
+                Pcore = 0.0
+                Tcore = 0.0
+            elif r[i] < .02 * initial_cond["Rs"] and M_r[i] < .01 * initial_cond["Ms"] and L_r[i] < .1 * initial_cond["Ls"]:
+                rhocor = M_r[i] / (4/3 * pi * r[i]**3)
+                rhomax = 10.0 * (rho[i]/rho[im1]) * rho[i]
+                epscor = L_r[i] / M_r[i]
+                Pcore = P[i] + 2/3 * pi * constants["G"] * rhocor**2 * r[i]**2
+                Tcore = Pcore * mu * constants["m_H"] / (rhocor * constants["k_B"])
+                if rhocor < rho[i] or rhocor > rhomax:
+                    Igoof = 1
+                elif epscor < epslon[i]:
+                    Igoof = 2
+                elif Tcore < T[i]:
+                    Igoof = 3
+                else:
+                    Igoof = 0
+            if Igoof != -1:
+                istop = i
+                # Loop
+                continue
+
+            # Change step size?
+            if flags["idrflg"] == 0 and M_r[i] < .99 * initial_cond["Ms"]:
+                deltar = -initial_cond["Rs"]/100.0
+                flags["idrflg"] = 1
+            if flags["idrflg"] == 1 and deltar > .5 * r[i]:
+                deltar = -initial_cond["Rs"]/5000
+                flags["idrflg"] = 2
+            istop = i
+        # End of loop
+
+        rhocor = M_r[istop] / (4/3 * pi * r[istop]**3)
+        epscor = L_r[istop] / M_r[istop]
+        Pcore = P[istop] + 2 / 3 * pi * constants["G"] * rhocor ** 2 * r[istop] ** 2
+        Tcore = Pcore * mu * constants["m_H"] / (rhocor * constants["k_B"])
+
+        if Igoof != 0:
+            print(goof[Igoof])
+        else:
+            print("Success")
+
+    # Print the central conditions
+    Rcrat = r[istop] / initial_cond["Rs"]
+    if Rcrat < -9.999:
+        Rcrat = -9.999
+    Mcrat = M_r[istop] / initial_cond["Ms"]
+    if Mcrat < -9.999:
+        Mcrat = -9.999
+    Lcrat = L_r[istop]/ initial_cond["Ls"]
+    if Lcrat < -9.999:
+        Lcrat = -9.999
+
+    solar_crat_table = [["","Solar", "Crat"],["Mass", initial_cond["Msolar"], Mcrat], ["Radius", initial_cond["Rsolar"], Rcrat], ["Luminosity", initial_cond["Lsolar"], Lcrat]]
+    print(tabulate(solar_crat_table), headers="firstrow")
+    mass_table = [["Hydrogen", "Helium", "Metals"], ["Mass Fractions", mass_fractions["X"], mass_fractions["Y"], mass_fractions["Z"]]]
+    print(tabulate(mass_table), headers="firstrow")
+    core_table = [["Rho", "Temperature", "Pressure", "Epsilon"], [rhocor, Tcore, Pcore, epscor]]
+    print(tabulate(core_table, headers="firstrow"))
+
+    # Print data from the cetner of the start outward, labeling convective or radiative zones zones.
+    for ic in range(0 , istop):
+        i = istop - ic + 1
+        Qm = 1.0 - M_r[i]/initial_cond["Ms"]
+        if dlPdlT[i] < constants["gamrat"]:
+            rcf = 'c'
+        else:
+            rcf = 'r'
+        if abs(dlPdlT[i]) > dlPlim:
+            if dlPdlT[i] >= 0:
+                dlPdlT = dlPlim
+            else:
+                dlPdlT = -dlPlim
+            clim = '*'
+        else:
+            clim = ' '
+
+
+
+
+
 
 
 
