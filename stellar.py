@@ -1,5 +1,9 @@
 from math import *
 from tabulate import *
+constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 3.826e+33, "G": 5.67051e-5, "k_B": 2.99792458e+10,
+                 "m_H": 7.56591e-15, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
+                 "kPad":  1.0, "tog_bf": .01, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
+
 def STATSTAR():
     # A = [r, P, M_r, L_r, T]
     A = [0, 0, 0, 0, 0]
@@ -45,9 +49,6 @@ def STATSTAR():
     # constants = [sigma, c, a, G, k_B, m_H, pi, gamma, gamrat, kPad,  tog_bf, g_ff]
     #kPad = P/T^gamrat
     GAMMA = (5.0/3.0)
-    constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 3.826e+33, "G": 5.67051e-5, "k_B": 2.99792458e+10,
-                 "m_H": 7.56591e-15, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
-                 "kPad":  1.0, "tog_bf": .01, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
 
     # initial_cond = [Msolar, Lsolar, Te]
     initial_cond = {"Msolar": 0, "Lsolar": 0, "Rsolar": 0, "Te": 0, "Ms": 0, "Ls": 0, "Rs": 0, "T0": 0, "P0": 0}
@@ -77,6 +78,9 @@ def STATSTAR():
     initial_cond["Ls"] = initial_cond["Lsolar"] * constants["Lsun"]
     initial_cond["Rs"] = ((initial_cond["Ls"]/(4.0*constants["pi"]*constants["sigma"]))**1/2)/(initial_cond["Te"]**2)
     initial_cond["Rsolar"] = initial_cond["Rs"] / constants["Rsun"]
+
+    resultDictionary = {"zone_boundaries": zone_boundaries, "initial_cond": initial_cond,
+                        "mass_fractions": mass_fractions, "constants": constants}
 
     # Begin with a very small step size since surface conditions vary rapidly.
     deltar = -initial_cond["Rs"] / 1000.0
@@ -146,6 +150,7 @@ def STATSTAR():
         f_im1 = []
         dfdr = []
         f_i = []
+
 
         for i in range(Nsrtp1, zone_boundaries["Nstop"]):
             im1 = i - 1
@@ -251,7 +256,7 @@ def STATSTAR():
     Mcrat = M_r[istop] / initial_cond["Ms"]
     if Mcrat < -9.999:
         Mcrat = -9.999
-    Lcrat = L_r[istop]/ initial_cond["Ls"]
+    Lcrat = L_r[istop] / initial_cond["Ls"]
     if Lcrat < -9.999:
         Lcrat = -9.999
 
@@ -278,6 +283,30 @@ def STATSTAR():
             clim = '*'
         else:
             clim = ' '
+        results = [["R [" + i + "]", r[i]], ["Qm", Qm], ["L_r[" + i + "]", L_r[i]], ["T[" + i + "", T[i]],
+                   ["P["+ i + "]", P[i]], ["Rho[" + i + "]", rho[i]], ["Kappa[" + i + "]", kappa[i]],
+                   ["Epsilon[" + i + "]", epslon[i]], ["dlPdlT[" + i + "]", dlPdlT[i]]]
+        print(tabulate(results))
+    print("**** The integration has been completed ****")
+
+# Returns r, M_
+def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, r, P_ip1, M_rip1, L_rip1, T_ip1, tog_bf, irc):
+    r = r_i + deltar
+    M_rip1 = M_ri
+    L_rip1 = L_ri
+
+    if irc == 0:
+        T_ip1 = constants["G"] * M_rip1*mu*constants["m_H"]/(4.25*constants["k_B"])*(1/r - 1/Rs)
+        A_bf = 4.34e+25 * Z * (1.0 + X)/tog_bf
+        A_ff = 3.68e+22 * constants["g_ff"] * (1.0 - Z) * (1.0 + X)
+        Afac = A_bf + A_ff
+        P_ip1 = sqrt((1.0/4.25)*(16.0/3.0*pi*constants["a"]*constants["c"])*(constants["G"] * M_rip1/L_rip1) *
+                     (constants["k_B"]/(Afac * mu * constants["m_H"]))) * T_ip1**4.25
+
+    # This is the convective approximation
+    else:
+        T_ip1 = constants["G"] * M_rip1 * mu * constants["m_H"] / constants["k_B"] * (1/r - 1/Rs)/constants["gamrat"]
+        P_ip1 = constants["kPad"]*T_ip1**constants["gamrat"]
 
 
 
@@ -288,4 +317,3 @@ def STATSTAR():
 
 
 
-    resultDictionary = {"zone_boundaries": zone_boundaries, "initial_cond": initial_cond, "mass_fractions": mass_fractions, "constants": constants}
