@@ -121,7 +121,7 @@ def STATSTAR():
     for i in range(0,zone_boundaries["Nstart"]):
         ip1 = i + 1
         STARTMDL(deltar, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], M_r[i], L_r[i],
-                 r[ip1], P[ip1], M_r[ip1], L_r[ip1], T[ip1], constants["tog_bf"], irc)
+                 [r[ip1], M_r[ip1], L_r[ip1], T[ip1], P[ip1]], constants["tog_bf"], irc)
         EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[ip1], T[ip1], rho[ip1], kappa[ip1],
             epslon[ip1], constants["tog_bf"], ip1, ierr)
 
@@ -289,24 +289,30 @@ def STATSTAR():
         print(tabulate(results))
     print("**** The integration has been completed ****")
 
-# Returns r, M_
-def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, r, P_ip1, M_rip1, L_rip1, T_ip1, tog_bf, irc):
-    r = r_i + deltar
-    M_rip1 = M_ri
-    L_rip1 = L_ri
+# Returns r, M_rip1, L_rip1, T_ip1, P_ip1
+def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, irc, returnArray):
+    # r
+    returnArray[0] = r_i + deltar
+    # M_rip1
+    returnArray[1] = M_ri
+    # L_rip1
+    returnArray[2] = L_ri
 
     if irc == 0:
-        T_ip1 = constants["G"] * M_rip1*mu*constants["m_H"]/(4.25*constants["k_B"])*(1/r - 1/Rs)
-        A_bf = 4.34e+25 * Z * (1.0 + X)/tog_bf
+        # T_ip1
+        returnArray[3] = constants["G"] * returnArray[1]*mu*constants["m_H"]/(4.25*constants["k_B"])*(1/r - 1/Rs)
+        A_bf = 4.34e+25 * Z * (1.0 + X)/constants["tog_bf"]
         A_ff = 3.68e+22 * constants["g_ff"] * (1.0 - Z) * (1.0 + X)
         Afac = A_bf + A_ff
-        P_ip1 = sqrt((1.0/4.25)*(16.0/3.0*pi*constants["a"]*constants["c"])*(constants["G"] * M_rip1/L_rip1) *
-                     (constants["k_B"]/(Afac * mu * constants["m_H"]))) * T_ip1**4.25
+        # L_ip1
+        returnArray[4] = sqrt((1.0/4.25)*(16.0/3.0*pi*constants["a"]*constants["c"])*(constants["G"] * returnArray[1]/returnArray[2]) *
+                     (constants["k_B"]/(Afac * mu * constants["m_H"]))) * returnArray[3]**4.25
 
     # This is the convective approximation
     else:
-        T_ip1 = constants["G"] * M_rip1 * mu * constants["m_H"] / constants["k_B"] * (1/r - 1/Rs)/constants["gamrat"]
-        P_ip1 = constants["kPad"]*T_ip1**constants["gamrat"]
+        returnArray[3] = constants["G"] * returnArray[1] * mu * constants["m_H"] / constants["k_B"] * (1/returnArray[0] - 1/Rs)/constants["gamrat"]
+        returnArray[4] = constants["kPad"]*returnArray[3]**constants["gamrat"]
+
 
 
 
