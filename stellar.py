@@ -1,10 +1,16 @@
 from math import *
-from tabulate import *
+try:
+    from tabulate import *
+except:
+    print("pip install tabulate brah")
+GAMMA = 5/3
 constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 3.826e+33, "G": 5.67051e-5, "k_B": 2.99792458e+10,
                  "m_H": 7.56591e-15, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
                  "kPad":  1.0, "tog_bf": .01, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
+diff_eqs = {"dMdr": 0, "dPdr":0, "dLdr":0, "dTdr":0}
 
 def STATSTAR():
+    ierr = 1
     # A = [r, P, M_r, L_r, T]
     A = [0, 0, 0, 0, 0]
 
@@ -26,16 +32,11 @@ def STATSTAR():
     # H = [f_im1, f_i, dfdr]
     H = [0, 0, 0]
 
-    # I = [dMdr, dPdr, dLdr, dTdr]
-    I = [0, 0, 0, 0]
-
-    # J = []
-    J = [0, 0]
 
     #  FLAGS:
     #  ---------------------------------------------
     #  idrflg {0 = Rs/1000, 1 = Rs/100 , 2 = Rs/5000} initial dr flag
-    #  Igoof {-1,0,1,2,3,4,5} ??????????????????????
+    #  Igoof {-1,0,1,2,3,4,5}
     #  ----------------------------------------------
     flags = {"idrflg": 0, "Igoof": -1}
 
@@ -46,9 +47,7 @@ def STATSTAR():
     # Nstop maximum number of allowed zones
     zone_boundaries = {"Nstart": 10, "Nstop": 999}  # Nstart,Nstop
 
-    # constants = [sigma, c, a, G, k_B, m_H, pi, gamma, gamrat, kPad,  tog_bf, g_ff]
     #kPad = P/T^gamrat
-    GAMMA = (5.0/3.0)
 
     # initial_cond = [Msolar, Lsolar, Te]
     initial_cond = {"Msolar": 0, "Lsolar": 0, "Rsolar": 0, "Te": 0, "Ms": 0, "Ls": 0, "Rs": 0, "T0": 0, "P0": 0}
@@ -90,15 +89,15 @@ def STATSTAR():
     mu = 1.0 / (2.0 * mass_fractions["X"] + .75 * mass_fractions["Y"] + .5 * mass_fractions["Z"])
 
     # Initialize values of r, P, M_r, L_r, T, rho, kappa, and epsilon at the surface.
-    r = []
-    M_r = []
-    L_r = []
-    T = []
-    P = []
-    rho = []
-    kappa = []
-    epslon = []
-    dlPdlT = []
+    r = [1]
+    M_r = [1]
+    L_r = [1]
+    T = [1]
+    P = [1]
+    rho = [1]
+    kappa = [1]
+    epslon = [1]
+    dlPdlT = [1]
 
     r[0] = initial_cond["Rs"]
     M_r[0] = initial_cond["Ms"]
@@ -313,13 +312,68 @@ def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, irc, returnArray):
         returnArray[3] = constants["G"] * returnArray[1] * mu * constants["m_H"] / constants["k_B"] * (1/returnArray[0] - 1/Rs)/constants["gamrat"]
         returnArray[4] = constants["kPad"]*returnArray[3]**constants["gamrat"]
 
+#calculates the values of density,opacity, guillotine-to-gaunt ration, energy gen rate
+# for a radius r
+
+# instead of passing in ierr going to use the return as an error code. 0 for success.
+def EOS(X, Z, ZXCNO, mu, P, T, rho, kappa, epslon, tog_bf, izone):
+
+    # solve for density from the ideal gas law
+    if T < 0 or P < 0:
+       print('oops soupy')
+       return 1
+    Prad = constants['a']*(T**4)/3
+    Pgas = P - Prad
+    rho = (mu * constants['m_H']/constants['k_B']) * (Pgas/T)
+    if rho < 0:
+        print('oops soupy')
+        return 1
+    # Calc opacity, including guillatine-to-gaunt factor ratio
+    tog_bf = 2.82 * (rho*(1+X))**.2
+    k_bf = 2.34E25/tog_bf*Z(1 + X)* rho/(T**3.5 + comp_eps)
+    k_ff = 3.68E22*g_ff*(1-Z)*(1+X)*rho/(T**3.5 + comp_eps)
+    k_e = .2*(1+X)
+    kappa = k_bf + k_ff +k_e
+
+    #calc eneregy generation by pp chain and CNO cycle
+    #The screening factor for the pp chain is calculated as fpp
+
+    T6 = T*1E-6
+    fx = .133 * X * ((3+X)*rho)**.5 / (T6**1.5 + comp_eps)
+    fpp = 1 + fx*X
+    psipp = 1 + 1.412E8 * (1/x-1)*exp(-49.98*T6**-oneo3)
+    Cpp = 1 + .0123*T6*oneo3 + .0109*T6**(-twoo3) - .000149*T6
+    epspp = 2.38E6 * rho * x * X * fpp * psipp * Cpp * T6**(-twoo3) * exp(-33.8*T6**(-oneo3))
+    CCNO = 1 + .0027*T6**oneo3 - .0078 * T6**twoo3 - .000149*T6
+    epsCNO = 8.67E27 * rho * X * XCNO * CCNO * T6**(-twoo3) * exp(-152.28 * T6**(-oneo3))
+    epslon = epspp + epsCNO
 
 
+# 'Hydrostatic equilibrium Pressure Gradient
+def dPdr(r,M_r,rho):
+    #dPdr
+    return -G * rho * M_r * r**-2
+
+# 'Conservation of Mass
+def dMdr(r,rho):
+    #dMdr
+    return 4 * pi * rho * r**2
 
 
+# 'luminosity thingy
+def dLdr(r, rho, epslon):
+    #dLdr
+    return 4 * pi * rho * epslon * r**2
 
 
+# 'The temp one
+def dTdr(r, M_r, L_r, T, rho, kappa, mu, irc):
+    if irc == 0:
+        #dTdr
+        return - (3/(16 * pi * a * c)) * kappa * rho * T**-3 * L_r * r**-2
+    else:
+        #dTdr
+        return -1 / gamrat * G * M_r * r**-2 * my * m_H / k_B
 
 
-
-
+STATSTAR()
