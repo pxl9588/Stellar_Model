@@ -7,7 +7,7 @@ GAMMA = 5/3
 constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 3.826e+33, "G": 5.67051e-5, "k_B": 2.99792458e+10,
                  "m_H": 7.56591e-15, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
                  "kPad":  1.0, "tog_bf": .01, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
-diff_eqs = {"dMdr": 0, "dPdr":0, "dLdr":0, "dTdr":0}
+diff_eqs = {"dMdr": 0, "dPdr": 0, "dLdr": 0, "dTdr": 0}
 
 def STATSTAR():
     ierr = 1
@@ -316,7 +316,11 @@ def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, irc, returnArray):
 # for a radius r
 
 # instead of passing in ierr going to use the return as an error code. 0 for success.
-def EOS(X, Z, ZXCNO, mu, P, T, rho, kappa, epslon, tog_bf, izone):
+# Returns [rho, kappa, epslon]
+def EOS(X, Z, XCNO, mu, P, T):
+
+    oneo3 = .333333333333
+    twoo3 = .666666666667
 
     # solve for density from the ideal gas law
     if T < 0 or P < 0:
@@ -330,10 +334,10 @@ def EOS(X, Z, ZXCNO, mu, P, T, rho, kappa, epslon, tog_bf, izone):
         return 1
     # Calc opacity, including guillatine-to-gaunt factor ratio
     tog_bf = 2.82 * (rho*(1+X))**.2
-    k_bf = 2.34E25/tog_bf*Z(1 + X)* rho/(T**3.5 + comp_eps)
-    k_ff = 3.68E22*g_ff*(1-Z)*(1+X)*rho/(T**3.5 + comp_eps)
+    k_bf = 4.34E25/tog_bf*Z(1 + X)* rho/(T**3.5)
+    k_ff = 3.68E22*constants["g_ff"]*(1-Z)*(1+X)*rho/(T**3.5)
     k_e = .2*(1+X)
-    kappa = k_bf + k_ff +k_e
+    kappa = k_bf + k_ff + k_e
 
     #calc eneregy generation by pp chain and CNO cycle
     #The screening factor for the pp chain is calculated as fpp
@@ -348,11 +352,12 @@ def EOS(X, Z, ZXCNO, mu, P, T, rho, kappa, epslon, tog_bf, izone):
     epsCNO = 8.67E27 * rho * X * XCNO * CCNO * T6**(-twoo3) * exp(-152.28 * T6**(-oneo3))
     epslon = epspp + epsCNO
 
+    return [rho, kappa, epslon]
 
 # 'Hydrostatic equilibrium Pressure Gradient
 def dPdr(r,M_r,rho):
     #dPdr
-    return -G * rho * M_r * r**-2
+    return -constants["G"] * rho * M_r * r**-2
 
 # 'Conservation of Mass
 def dMdr(r,rho):
@@ -370,10 +375,41 @@ def dLdr(r, rho, epslon):
 def dTdr(r, M_r, L_r, T, rho, kappa, mu, irc):
     if irc == 0:
         #dTdr
-        return - (3/(16 * pi * a * c)) * kappa * rho * T**-3 * L_r * r**-2
+        return - (3/(16 * pi * constants["a"] * constants["c"])) * kappa * rho * T**-3 * L_r * r**-2
     else:
         #dTdr
-        return -1 / gamrat * G * M_r * r**-2 * my * m_H / k_B
+        return -1 / constants["gamrat"] * constants["G"] * M_r * r**-2 * mu * constants["m_H"] / constants["k_B"]
 
+def RUNGE(f_im1, dfdr, f_i, r_im1, deltar, irc, X, Z, XCNO, mu, izone, ierr):
+    dr12 = deltar/2.0
+    dr16 = deltar/6.0
+    r12 = r_im1 + dr12
+    r_i = r_im1 + deltar
 
+    # Calculate intermediate derviatives from the fundamental stellar structure equations found in subroutine fundeq.
+    for i in range(0,3):
+        f_temp[i] = f_im[i] + dr12*dfdr[i]
+    FUNDEQ(r12, f_temp, df1, irc, X, Z, XCNO, mu, izone, ierr)
+    for i in range(0, 3):
+        f_temp[i] = f_im[i] + dr12*df1[i]
+    FUNDEQ(r12, f_temp, df2, irc, X, Z, XCNO, mu, izone, ierr)
+    for i in range(0, 3):
+        f_temp[i] = f_im1[i] + deltar*df2[i]
+    FUNDEQ(r_i, f_temp, df3, irc, X, Z, XCNO, mu, izone, ierr)
+    for i in range(0, 3):
+        f_i[i] = f_im1[i] + dr16*(dfdr[i] + 2*df1[i] + 2.0 * df2[i] + df3[i])
+
+def FUNDEQ(r, f, dfdr, irc, X, Z, XCNO, mu, izone, ierr):
+    P = f[0]
+    M_r = f[1]
+    L_r = f[2]
+    T = f[3]
+    [rho, kappa, epslon] = EOS(X, Z, XCNO, mu, P, T, constants["tog_bf"], izone, ierr)
+    dfdr[0] = dPdr(r, M_r, rho)
+    dfdr[1] = dMdr(r, rho)
+    dfdr[2] = dLdr(r, rho, epslon)
+    dfdr[3] = dTdr(r, M_r, L_r, T, rho, kappa, mu, irc)
+
+    return [dfdr[0], dfdr[1], dfdr[2], dfdr[3]]
+    
 STATSTAR()
