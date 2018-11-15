@@ -381,6 +381,10 @@ def dTdr(r, M_r, L_r, T, rho, kappa, mu, irc):
         return -1 / constants["gamrat"] * constants["G"] * M_r * r**-2 * mu * constants["m_H"] / constants["k_B"]
 
 def RUNGE(f_im1, dfdr, f_i, r_im1, deltar, irc, X, Z, XCNO, mu, izone, ierr):
+    f_temp = []
+    df1 = []
+    df2 = []
+    df3 = []
     dr12 = deltar/2.0
     dr16 = deltar/6.0
     r12 = r_im1 + dr12
@@ -388,10 +392,10 @@ def RUNGE(f_im1, dfdr, f_i, r_im1, deltar, irc, X, Z, XCNO, mu, izone, ierr):
 
     # Calculate intermediate derviatives from the fundamental stellar structure equations found in subroutine fundeq.
     for i in range(0,3):
-        f_temp[i] = f_im[i] + dr12*dfdr[i]
+        f_temp[i] = f_im1[i] + dr12*dfdr[i]
     FUNDEQ(r12, f_temp, df1, irc, X, Z, XCNO, mu, izone, ierr)
     for i in range(0, 3):
-        f_temp[i] = f_im[i] + dr12*df1[i]
+        f_temp[i] = f_im1[i] + dr12*df1[i]
     FUNDEQ(r12, f_temp, df2, irc, X, Z, XCNO, mu, izone, ierr)
     for i in range(0, 3):
         f_temp[i] = f_im1[i] + deltar*df2[i]
@@ -409,7 +413,5 @@ def FUNDEQ(r, f, dfdr, irc, X, Z, XCNO, mu, izone, ierr):
     dfdr[1] = dMdr(r, rho)
     dfdr[2] = dLdr(r, rho, epslon)
     dfdr[3] = dTdr(r, M_r, L_r, T, rho, kappa, mu, irc)
-
-    return [dfdr[0], dfdr[1], dfdr[2], dfdr[3]]
     
 STATSTAR()
