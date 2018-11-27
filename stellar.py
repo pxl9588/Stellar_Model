@@ -4,35 +4,12 @@ try:
 except:
     print("pip install tabulate brah")
 GAMMA = 5/3
-constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 3.826e+33, "G": 5.67051e-5, "k_B": 2.99792458e+10,
-                 "m_H": 7.56591e-15, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
+constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 7.56591e-15, "G": 6.67259e-8, "k_B": 1.38065e-16,
+                 "m_H": 1.673534e-24, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
                  "kPad":  1.0, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
 diff_eqs = {"dMdr": 0, "dPdr": 0, "dLdr": 0, "dTdr": 0}
 
 def STATSTAR():
-    ierr = 1
-    # A = [r, P, M_r, L_r, T]
-    A = [0, 0, 0, 0, 0]
-
-    # B = [rho, kappa]
-    B = [0, 0]
-
-    # C = [XCNO, mu]
-    C = [0, 0]
-
-    # D = [Pscore, Tscore, rhocor, epscor, rhomax]
-    D = [0, 0, 0, 0, 0]
-
-    # E = [Rsolar,Qm, Rcrat, Mcrat, Lcrat]
-    E = [0, 0, 0, 0, 0, 0]
-
-    # F = [deltam, dlPlim]
-    F = [0, 0]
-
-    # H = [f_im1, f_i, dfdr]
-    H = [0, 0, 0]
-
-
     #  FLAGS:
     #  ---------------------------------------------
     #  idrflg {0 = Rs/1000, 1 = Rs/100 , 2 = Rs/5000} initial dr flag
@@ -57,15 +34,15 @@ def STATSTAR():
 
     # OPEN SOME FILE FOR SOMETHING
 
-    initial_cond["Msolar"] = float(input("Enter the mass of the star (in solar units): "))
+    initial_cond["Msolar"] = 1.0  # float(input("Enter the mass of the star (in solar units): "))
 
-    initial_cond["Lsolar"] = float(input("Enter the luminosity of the star (in solar units): "))
+    initial_cond["Lsolar"] = 1.0  # float(input("Enter the luminosity of the star (in solar units): "))
 
-    initial_cond["Te"] = float(input("Enter the effective temperature of the star (in K): "))
+    initial_cond["Te"] = 5600.0  # float(input("Enter the effective temperature of the star (in K): "))
 
-    mass_fractions["X"] = float(input("Enter the mass fraction of hydrogen (X): "))
+    mass_fractions["X"] = .75  # float(input("Enter the mass fraction of hydrogen (X): "))
 
-    mass_fractions["Z"] = float(input("Enter the mass fraction of metals (Z): "))
+    mass_fractions["Z"] = .02  # float(input("Enter the mass fraction of metals (Z): "))
 
     mass_fractions["Y"] = 1.0 - mass_fractions["X"] - mass_fractions["Z"]
 
@@ -89,31 +66,24 @@ def STATSTAR():
     mu = 1.0 / (2.0 * mass_fractions["X"] + .75 * mass_fractions["Y"] + .5 * mass_fractions["Z"])
 
     # Initialize values of r, P, M_r, L_r, T, rho, kappa, and epsilon at the surface.
-    r = [1]
-    M_r = [1]
-    L_r = [1]
-    T = [1]
-    P = [1]
-    rho = [1]
-    kappa = [1]
-    epslon = [1]
-    dlPdlT = [1]
+    r, M_r, L_r, T, P, rho, kappa, epslon, dlPdlT = ([0.0] * zone_boundaries["Nstop"] for makeArray in range(9))
 
     # took tog_bof out of constants because its dynamic
     tog_bf = .01
+    dlPlim = 99.9
 
     r[0] = initial_cond["Rs"]
     M_r[0] = initial_cond["Ms"]
     L_r[0] = initial_cond["Ls"]
     T[0] = initial_cond["T0"]
     P[0] = initial_cond["P0"]
-    if initial_cond["P0"] < 0.0 or initial_cond["T0"] < 0.0:
+    if P[0] <= 0.0 or T[0] <= 0.0:
         rho[0] = 0.0
         kappa[0] = 0.0
         epslon[0] = 0.0
-        print("Pressure or Temperature 0, line 114")
+        print("Initial P and T = 0, setting more initials")
     else:
-        [rho[0], kappa[0], epslon[0], tog_bf] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[0], T[0])
+        [rho[0], kappa[0], epslon[0], tog_bf, ierr] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[0], T[0])
         if ierr == 0:
             print("Oopsy soupsy")
             return
@@ -123,10 +93,10 @@ def STATSTAR():
     dlPdlT[0] = 4.25
     ip1 = 0
 
-    for i in range(0,zone_boundaries["Nstart"]):
+    for i in range(0, zone_boundaries["Nstart"]):
         ip1 = i + 1
-        [r[ip1], M_r[ip1], L_r[ip1], T[ip1], P[ip1]]= STARTMDL(deltar, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], M_r[i], L_r[i], tog_bf, irc)
-        [rho[ip1], kappa[ip1], epslon[ip1], tog_bf] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[ip1], T[ip1])
+        [r[ip1], M_r[ip1], L_r[ip1], T[ip1], P[ip1]] = STARTMDL(deltar, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], M_r[i], L_r[i], tog_bf, irc)
+        [rho[ip1], kappa[ip1], epslon[ip1], tog_bf, ierr] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[ip1], T[ip1])
 
         # Determine whether convection will be operating in th next zone
         if i > 1:
@@ -150,8 +120,8 @@ def STATSTAR():
 
         # Main integration loop
         Nsrtp1 = ip1 + 1
-        f_im1 = []
-        dfdr = []
+        f_im1 = [0] * 4
+        dfdr = [0] * 4
         f_i = [0, 0, 0, 0]
 
 
@@ -182,10 +152,9 @@ def STATSTAR():
             T[i] = f_i[3]
 
             # Calculate the density, opacity, and energy generation rate for this zone
-            [rho[i], kappa[i], epslon[i], tog_bf] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[i], T[i])
+            [rho[i], kappa[i], epslon[i], tog_bf, ierr] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[i], T[i])
 
             # Determine whether convection will be operating in the next zone
-
             dlPdlT[i] = log(P[i]/P[im1])/log(T[i]/T[im1])
             if dlPdlT[i] < constants["gamrat"]:
                 irc = 1
@@ -270,7 +239,7 @@ def STATSTAR():
     print(tabulate(core_table, headers="firstrow"))
 
     # Print data from the cetner of the start outward, labeling convective or radiative zones zones.
-    for ic in range(0 , istop):
+    for ic in range(0, istop):
         i = istop - ic + 1
         Qm = 1.0 - M_r[i]/initial_cond["Ms"]
         if dlPdlT[i] < constants["gamrat"]:
@@ -292,27 +261,27 @@ def STATSTAR():
     print("**** The integration has been completed ****")
 
 # Returns r, M_rip1, L_rip1, T_ip1, P_ip1
-def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, irc):
+def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, tog_bf, irc):
 
     r = r_i + deltar
     M_rip1 = M_ri
     L_rip1 = L_ri
 
     if irc == 0:
-        T_rip1 = constants["G"] * M_rip1*mu*constants["m_H"]/(4.25*constants["k_B"])*(1/r - 1/Rs)
-        A_bf = 4.34e+25 * Z * (1.0 + X)/constants["tog_bf"]
+        T_ip1 = constants["G"] * M_rip1 * mu * constants["m_H"]/(4.25*constants["k_B"])*(1.0/r - 1.0/Rs)
+        A_bf = 4.34e+25 * Z * (1.0 + X)/tog_bf
         A_ff = 3.68e+22 * constants["g_ff"] * (1.0 - Z) * (1.0 + X)
         Afac = A_bf + A_ff
 
-        P_rip1 = sqrt((1.0/4.25)*(16.0/3.0*pi*constants["a"]*constants["c"])*(constants["G"] * M_rip1/L_rip1) *
-                     (constants["k_B"]/(Afac * mu * constants["m_H"]))) * T_rip1**4.25
+        P_ip1 = sqrt((1.0/4.25)*(16.0/3.0*pi*constants["a"]*constants["c"])*(constants["G"] * M_rip1/L_rip1) *
+                     (constants["k_B"]/(Afac * mu * constants["m_H"]))) * T_ip1**4.25
 
     # This is the convective approximation
     else:
-        T_rip1 = constants["G"] * M_rip1 * mu * constants["m_H"] / constants["k_B"] * (1/r - 1/Rs)/constants["gamrat"]
-        P_rip1 = constants["kPad"]*T_rip1**constants["gamrat"]
+        T_ip1 = constants["G"] * M_rip1 * mu * constants["m_H"] / constants["k_B"] * (1.0/r - 1.0/Rs)/constants["gamrat"]
+        P_ip1 = constants["kPad"]*T_ip1**constants["gamrat"]
 
-    return [r, M_rip1, L_rip1, T_rip1, P_rip1]
+    return [r, M_rip1, L_rip1, T_ip1, P_ip1]
 
 #calculates the values of density,opacity, guillotine-to-gaunt ration, energy gen rate
 # for a radius r
@@ -326,13 +295,13 @@ def EOS(X, Z, XCNO, mu, P, T):
 
     # solve for density from the ideal gas law
     if T <= 0.0 or P <= 0.0:
-       print('oops soupy')
-       return 1
-    Prad = constants['a']*(T**4)/3
+       print('Temperature or Pressure less than equal to 0, in EOS')
+       return [0, 0, 0, 0, 1]
+    Prad = constants['a']*(T**4)/3.0
     Pgas = P - Prad
     rho = (mu * constants['m_H']/constants['k_B']) * (Pgas/T)
-    if rho < 0:
-        print('oops soupy')
+    if rho < 0.0:
+        print('Rho less than 0, in EOS')
         return [0, 0, 0, 0, 1]
     # Calc opacity, including guillatine-to-gaunt factor ratio
     tog_bf = 2.82 * (rho*(1+X))**.2
@@ -354,7 +323,7 @@ def EOS(X, Z, XCNO, mu, P, T):
     epsCNO = 8.67E27 * rho * X * XCNO * CCNO * T6**(-twoo3) * exp(-152.28 * T6**(-oneo3))
     epslon = epspp + epsCNO
 
-    return [rho, kappa, epslon, tog_bf]
+    return [rho, kappa, epslon, tog_bf, 0]
 
 # 'Hydrostatic equilibrium Pressure Gradient
 def dPdr(r,M_r,rho):
@@ -382,27 +351,26 @@ def dTdr(r, M_r, L_r, T, rho, kappa, mu, irc):
         #dTdr
         return -1 / constants["gamrat"] * constants["G"] * M_r * r**-2 * mu * constants["m_H"] / constants["k_B"]
 
-def RUNGE(f_im1, dfdr, f_i, r_im1, deltar, irc, X, Z, XCNO, mu, izone, ierr):
-    f_temp = []
-    df1 = []
-    df2 = []
-    df3 = []
+def RUNGE(f_im1, dfdr, f_i, r_im1, deltar, irc, X, Z, XCNO, mu):
+    f_temp = [0] * 4
+    df1 = [0] * 4
+    df2 = [0] * 4
+    df3 = [0] * 4
     dr12 = deltar/2.0
     dr16 = deltar/6.0
     r12 = r_im1 + dr12
     r_i = r_im1 + deltar
-
     # Calculate intermediate derviatives from the fundamental stellar structure equations found in subroutine fundeq.
-    for i in range(0,3):
+    for i in range(0, 4):
         f_temp[i] = f_im1[i] + dr12*dfdr[i]
     FUNDEQ(r12, f_temp, df1, irc, X, Z, XCNO, mu)
-    for i in range(0, 3):
+    for i in range(0, 4):
         f_temp[i] = f_im1[i] + dr12*df1[i]
     FUNDEQ(r12, f_temp, df2, irc, X, Z, XCNO, mu)
-    for i in range(0, 3):
+    for i in range(0, 4):
         f_temp[i] = f_im1[i] + deltar*df2[i]
     FUNDEQ(r_i, f_temp, df3, irc, X, Z, XCNO, mu)
-    for i in range(0, 3):
+    for i in range(0, 4):
         f_i[i] = f_im1[i] + dr16*(dfdr[i] + 2*df1[i] + 2.0 * df2[i] + df3[i])
 
 def FUNDEQ(r, f, dfdr, irc, X, Z, XCNO, mu):
@@ -410,7 +378,7 @@ def FUNDEQ(r, f, dfdr, irc, X, Z, XCNO, mu):
     M_r = f[1]
     L_r = f[2]
     T = f[3]
-    [rho, kappa, epslon] = EOS(X, Z, XCNO, mu, P, T)
+    [rho, kappa, epslon, tog_bf, ierr] = EOS(X, Z, XCNO, mu, P, T)
     dfdr[0] = dPdr(r, M_r, rho)
     dfdr[1] = dMdr(r, rho)
     dfdr[2] = dLdr(r, rho, epslon)
