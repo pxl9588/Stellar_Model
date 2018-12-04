@@ -7,6 +7,24 @@ GAMMA = 5/3
 constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 7.56591e-15, "G": 6.67259e-8, "k_B": 1.38065e-16,
                  "m_H": 1.673534e-24, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
                  "kPad":  1.0, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
+eos_format_dict = {"100": "Negative Pressure or Temperature",
+               "200": "Negative Density, radiation pressure is probably too great."}
+format_dict = {"100": " You must have X + Z + Y = 1",
+               "200": "The variation is mass has become larger than 0.001*Ms",
+               "300": "The problem occured in the Runge-Kutta routine",
+               "5000": "Model has some problems",
+               "5100": "The number of allowed shells has been exceeded",
+               "5200": "The core density seems a bit off",
+               "5300": "Looks like you need a degenerate neutron gas and general relativity",
+               "5400": "The core epsilon seems a bit off",
+               "5500": "The extrapolated central temperature is too low",
+               "5600": "You created a start with a hole in the center",
+               "5700": "This star has a negative central luminosity",
+               "5800": "You hit the center before the mass and/or luminosity were depleted",
+               "6000": "Getting close, but still a few minor errors",
+               "7000": "Congrats, you found it. But look at your model carefully",
+               "9000": "***** The integration has been completed *****"
+                }
 diff_eqs = {"dMdr": 0, "dPdr": 0, "dLdr": 0, "dTdr": 0}
 
 def statstar():
@@ -34,15 +52,15 @@ def statstar():
 
     # OPEN SOME FILE FOR SOMETHING
 
-    initial_cond["Msolar"] = 1.0  # float(input("Enter the mass of the star (in solar units): "))
+    initial_cond["Msolar"] = float(input("Enter the mass of the star (in solar units): "))
 
-    initial_cond["Lsolar"] = 1.0  # float(input("Enter the luminosity of the star (in solar units): "))
+    initial_cond["Lsolar"] = float(input("Enter the luminosity of the star (in solar units): "))
 
-    initial_cond["Te"] = 5600.0  # float(input("Enter the effective temperature of the star (in K): "))
+    initial_cond["Te"] = float(input("Enter the effective temperature of the star (in K): "))
 
-    mass_fractions["X"] = .7381 # float(input("Enter the mass fraction of hydrogen (X): "))
+    mass_fractions["X"] = float(input("Enter the mass fraction of hydrogen (X): "))
 
-    mass_fractions["Z"] = .0134  # float(input("Enter the mass fraction of metals (Z): "))
+    mass_fractions["Z"] = float(input("Enter the mass fraction of metals (Z): "))
 
     mass_fractions["Y"] = 1.0 - mass_fractions["X"] - mass_fractions["Z"]
     if mass_fractions["Y"] < 0.0:
@@ -111,7 +129,7 @@ def statstar():
         delta_m = delta_r * dm_dr(r[ip1], rho[ip1])
         m_r[ip1] = m_r[i] + delta_m
         if abs(delta_m) > .001 * initial_cond["Ms"]:
-            print("The variation in mass has become larger than 0.001*Ms, leaving the approximation loop before Nstart was reached")
+            print(format_dict["200"])
             if ip1 > 2:
                 ip1 = ip1 - 1
             break
@@ -161,9 +179,9 @@ def statstar():
         # Check if the center has been reached. If so, set i_goof and estimate the central conditions:
         # rho_core, eps_core, p_core, t_core.
 
-        if r[j] < abs(delta_r) and (l_r[j] > .1 * initial_cond["Ls"] or m_r[j] > .01 * initial_cond["Ms"]):
+        if r[j] < abs(delta_r) and (l_r[j] >= .1 * initial_cond["Ls"] or m_r[j] >= .01 * initial_cond["Ms"]):
             i_goof = 6
-        elif l_r[j] < 0.0:
+        elif l_r[j] <= 0.0:
             i_goof = 5
             rho_core = m_r[j]/(4/3*pi*r[j]**3)
             if m_r[j] != 0:
@@ -172,7 +190,7 @@ def statstar():
                 eps_core = 0.0
             p_core = p[j] + 2/3 * pi * constants["G"] * rho_core**2 * r[j]**2
             t_core = p_core * mu * constants["m_H"]/(rho_core*constants["k_B"])
-        elif m_r[j] < 0.0:
+        elif m_r[j] <= 0.0:
             i_goof = 4
             rho_core = 0.0
             eps_core = 0.0
@@ -213,9 +231,31 @@ def statstar():
     t_core = p_core * mu * constants["m_H"] / (rho_core * constants["k_B"])
 
     if i_goof != 0:
-        print(goof[i_goof])
+        if i_goof == -1:
+            print(format_dict["5000"])
+            print(format_dict["5100"])
+        elif i_goof == 1:
+            print(format_dict["6000"])
+            print(format_dict["5200"])
+            if rho_core > 1E+10:
+                print(format_dict["5300"])
+        elif i_goof == 2:
+            print(format_dict["6000"])
+            print(format_dict["5400"])
+        elif i_goof == 3:
+            print(format_dict["6000"])
+            print(format_dict["5500"])
+        elif i_goof == 4:
+            print(format_dict["5000"])
+            print(format_dict["5600"])
+        elif i_goof == 5:
+            print(format_dict["5000"])
+            print(format_dict["5700"])
+        elif i_goof == 6:
+            print(format_dict["5000"])
+            print(format_dict["5800"])
     else:
-        print("Success")
+        print(format_dict["7000"])
 
     # Print the central conditions
     r_crat = r[i_stop] / initial_cond["Rs"]
@@ -256,9 +296,10 @@ def statstar():
         else:
             clim = ' '
         '''
-        results = [["i = " +str(i),""],["R [" + str(i) + "]", r[i]], ["Qm", qm], ["l_r[" + str(i) + "]", l_r[i]], ["t[" + str(i) + "]", t[i]],
-                   ["p["+ str(i) + "]", p[i]], ["Rho[" + str(i) + "]", rho[i]], ["Kappa[" + str(i) + "]", kappa[i]],
-                   ["Epsilon[" + str(i) + "]", epsilon[i]], ["dl_pdl_t[" + str(i) + "]", dl_pdl_t[i]]]
+        results = [["i = " + str(i), ""], ["R [" + str(i) + "]", r[i]], ["Qm", qm], ["l_r[" + str(i) + "]", l_r[i]],
+                   ["t[" + str(i) + "]", t[i]], ["p[" + str(i) + "]", p[i]], ["Rho[" + str(i) + "]", rho[i]],
+                   ["Kappa[" + str(i) + "]", kappa[i]], ["Epsilon[" + str(i) + "]", epsilon[i]],
+                   ["dl_pdl_t[" + str(i) + "]", dl_pdl_t[i]]]
         print(tabulate(results, headers="firstrow", numalign="right"))
         print("------------------------")
     print("**** The integration has been completed ****")
@@ -360,12 +401,12 @@ def eos(x, z, xcno, mu, p, t):
 
     # solve for density from the ideal gas law
     if t <= 0.0 or p <= 0.0:
-        raise SystemExit('Temperature or Pressure less than equal to 0, in EOS')
+        raise SystemExit(eos_format_dict["100"])
     prad = constants['a'] * (t ** 4) / 3.0
     pgas = p - prad
     rho = (mu * constants['m_H']/constants['k_B']) * (pgas / t)
     if rho < 0.0:
-        raise SystemExit("Rho is less than 0, in EOS")
+        raise SystemExit(eos_format_dict["200"])
     # Calc opacity, including guillatine-to-gaunt factor ratio
 
     tog_bf = 2.82 * (rho * (1 + x)) ** .2
