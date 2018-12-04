@@ -40,9 +40,9 @@ def statstar():
 
     initial_cond["Te"] = 5600.0  # float(input("Enter the effective temperature of the star (in K): "))
 
-    mass_fractions["X"] = .75  # float(input("Enter the mass fraction of hydrogen (X): "))
+    mass_fractions["X"] = .7381 # float(input("Enter the mass fraction of hydrogen (X): "))
 
-    mass_fractions["Z"] = .02  # float(input("Enter the mass fraction of metals (Z): "))
+    mass_fractions["Z"] = .0134  # float(input("Enter the mass fraction of metals (Z): "))
 
     mass_fractions["Y"] = 1.0 - mass_fractions["X"] - mass_fractions["Z"]
     if mass_fractions["Y"] < 0.0:
@@ -54,7 +54,7 @@ def statstar():
     # Calculate the mass, luminosity, and radius of the star
     initial_cond["Ms"] = initial_cond["Msolar"] * constants["Msun"]
     initial_cond["Ls"] = initial_cond["Lsolar"] * constants["Lsun"]
-    initial_cond["Rs"] = ((initial_cond["Ls"]/(4.0*constants["pi"]*constants["sigma"]))**1/2)/(initial_cond["Te"]**2)
+    initial_cond["Rs"] = sqrt(initial_cond["Ls"]/(4.0*constants["pi"]*constants["sigma"]))/initial_cond["Te"]**2
     initial_cond["Rsolar"] = initial_cond["Rs"] / constants["Rsun"]
 
     resultDictionary = {"zone_boundaries": zone_boundaries, "initial_cond": initial_cond,
@@ -86,7 +86,7 @@ def statstar():
         [rho[0], kappa[0], epsilon[0], tog_bf] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[0], t[0])
 
     constants["kPad"] = 0.3
-    irc = 0
+    irc = 1
     dl_pdl_t[0] = 4.25
     rho_core, eps_core, p_core, t_core, i_stop, i_goof = 0, 0, 0, 0, 0, 0
 
@@ -122,7 +122,7 @@ def statstar():
     df_dr = [0] * 4
     f_i = [0, 0, 0, 0]
 
-    for j in range(nstrtip1, zone_boundaries["N_stop"]):
+    for j in range(nstrtip1, zone_boundaries["N_stop"] + 1):
         im1 = j - 1
 
         # Initialize the Runge-Kutta routine with zone i - 1 quantities and their derivatives.
@@ -149,7 +149,7 @@ def statstar():
         t[j] = f_i[3]
 
         # Calculate the density, opacity, and energy generation rate for this zone
-        [rho[j], kappa[j], epsilon[j], tog_bf, ierr] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[j], t[j])
+        [rho[j], kappa[j], epsilon[j], tog_bf] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[j], t[j])
 
         # Determine whether convection will be operating in the next zone
         dl_pdl_t[j] = log(p[j]/p[im1])/log(t[j]/t[im1])
@@ -229,11 +229,15 @@ def statstar():
         l_crat = -9.999
 
     solar_crat_table = [["", "Solar", "Crat"], ["Mass", initial_cond["Msolar"], m_crat], ["Radius", initial_cond["Rsolar"], r_crat], ["Luminosity", initial_cond["Lsolar"], l_crat]]
-    print(tabulate(solar_crat_table), headers="firstrow")
+    print("      Solar Crat Table")
+    print(tabulate(solar_crat_table, headers="firstrow"))
+    print("             Mass Fractions Table")
     mass_table = [["Hydrogen", "Helium", "Metals"], ["Mass Fractions", mass_fractions["X"], mass_fractions["Y"], mass_fractions["Z"]]]
-    print(tabulate(mass_table), headers="firstrow")
+    print(tabulate(mass_table, headers="firstrow"))
+    print("               Core values Table")
     core_table = [["Rho", "Temperature", "Pressure", "Epsilon"], [rho_core, t_core, p_core, eps_core]]
     print(tabulate(core_table, headers="firstrow"))
+    print("----------------------------------------------")
 
     # Print data from the cetner of the start outward, labeling convective or radiative zones zones.
     for ic in range(0, i_stop):
@@ -252,10 +256,11 @@ def statstar():
         else:
             clim = ' '
         '''
-        results = [["R [" + str(i) + "]", r[i]], ["Qm", qm], ["l_r[" + str(i) + "]", l_r[i]], ["t[" + str(i) + "", t[i]],
+        results = [["i = " +str(i),""],["R [" + str(i) + "]", r[i]], ["Qm", qm], ["l_r[" + str(i) + "]", l_r[i]], ["t[" + str(i) + "]", t[i]],
                    ["p["+ str(i) + "]", p[i]], ["Rho[" + str(i) + "]", rho[i]], ["Kappa[" + str(i) + "]", kappa[i]],
                    ["Epsilon[" + str(i) + "]", epsilon[i]], ["dl_pdl_t[" + str(i) + "]", dl_pdl_t[i]]]
-        print(tabulate(results))
+        print(tabulate(results, headers="firstrow", numalign="right"))
+        print("------------------------")
     print("**** The integration has been completed ****")
 
 #calculates the values of density,opacity, guillotine-to-gaunt ration, energy gen rate
@@ -264,28 +269,28 @@ def statstar():
 # 'Hydrostatic equilibrium Pressure Gradient
 def dp_dr(r, m_r, rho):
     #dPdr
-    return -constants["G"] * rho * m_r * r**-2
+    return -constants["G"] * rho * m_r/r**2
 
 # 'Conservation of Mass
 def dm_dr(r, rho):
     #dMdr
-    return 4 * pi * rho * r**2
+    return 4.0 * constants["pi"] * rho * r**2
 
 
 # 'luminosity thingy
 def dl_dr(r, rho, epslon):
     #dLdr
-    return 4 * pi * rho * epslon * r**2
+    return 4 * constants["pi"] * rho * epslon * r**2
 
 
 # 'The temp one
 def dt_dr(r, m_r, l_r, t, rho, kappa, mu, irc):
     if irc == 0:
         #dTdr
-        return -(3/(16 * pi * constants["a"] * constants["c"])) * kappa * rho * t ** -3 * l_r * r ** -2
+        return -(3.0/(16.0 * constants["pi"] * constants["a"] * constants["c"])) * kappa * rho * t ** -3 * l_r * r ** -2
     else:
         #dTdr
-        return -1 / constants["gamrat"] * constants["G"] * m_r * r ** -2 * mu * constants["m_H"] / constants["k_B"]
+        return -1.0 / constants["gamrat"] * constants["G"] * m_r * r ** -2 * mu * constants["m_H"] / constants["k_B"]
 
 
 # Returns r, M_rip1, L_rip1, T_ip1, P_ip1
@@ -364,7 +369,7 @@ def eos(x, z, xcno, mu, p, t):
     # Calc opacity, including guillatine-to-gaunt factor ratio
 
     tog_bf = 2.82 * (rho * (1 + x)) ** .2
-    k_bf = 4.34E25 / tog_bf * z(1 + x) * rho / (t ** 3.5)
+    k_bf = 4.34E25 / tog_bf * z*(1 + x) * rho / (t ** 3.5)
     k_ff = 3.68E22 * constants["g_ff"] * (1 - z) * (1 + x) * rho / (t ** 3.5)
     k_e = .2*(1 + x)
     kappa = k_bf + k_ff + k_e
