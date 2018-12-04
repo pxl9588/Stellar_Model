@@ -9,22 +9,22 @@ constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 7.56591e-15, "G": 6.
                  "kPad":  1.0, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
 diff_eqs = {"dMdr": 0, "dPdr": 0, "dLdr": 0, "dTdr": 0}
 
-def STATSTAR():
+def statstar():
     #  FLAGS:
     #  ---------------------------------------------
     #  idrflg {0 = Rs/1000, 1 = Rs/100 , 2 = Rs/5000} initial dr flag
-    #  Igoof {-1,0,1,2,3,4,5}
+    #  i_goof {-1,0,1,2,3,4,5}
     #  ----------------------------------------------
-    flags = {"idrflg": 0, "Igoof": -1}
+    flags = {"idrflg": 0, "i_goof": -1}
 
     # Goof Dictionary
     goof = {1: "1"}
 
-    # Nstart number of steps for which starting equations are used
-    # Nstop maximum number of allowed zones
-    zone_boundaries = {"Nstart": 10, "Nstop": 999}  # Nstart,Nstop
+    # N_start number of steps for which starting equations are used
+    # N_stop maximum number of allowed zones
+    zone_boundaries = {"N_start": 10, "N_stop": 999}  # N_start,N_stop
 
-    #kPad = P/T^gamrat
+    #kPad = p/t^gamrat
 
     # initial_cond = [Msolar, Lsolar, Te]
     initial_cond = {"Msolar": 0, "Lsolar": 0, "Rsolar": 0, "Te": 0, "Ms": 0, "Ls": 0, "Rs": 0, "T0": 0, "P0": 0}
@@ -45,6 +45,8 @@ def STATSTAR():
     mass_fractions["Z"] = .02  # float(input("Enter the mass fraction of metals (Z): "))
 
     mass_fractions["Y"] = 1.0 - mass_fractions["X"] - mass_fractions["Z"]
+    if mass_fractions["Y"] < 0.0:
+        SystemExit("Where's the hydrogen?")
 
     # Select the mass fraction CNO to be 50% of Z.
     mass_fractions["XCNO"] = mass_fractions["Z"] / 2.0
@@ -59,299 +61,257 @@ def STATSTAR():
                         "mass_fractions": mass_fractions, "constants": constants}
 
     # Begin with a very small step size since surface conditions vary rapidly.
-    deltar = -initial_cond["Rs"] / 1000.0
-    flags["idrflg"] = 0
+    delta_r = -initial_cond["Rs"] / 1000.0
 
     # Calculate mean molecular weight mu assuming complete ionization
     mu = 1.0 / (2.0 * mass_fractions["X"] + .75 * mass_fractions["Y"] + .5 * mass_fractions["Z"])
 
-    # Initialize values of r, P, M_r, L_r, T, rho, kappa, and epsilon at the surface.
-    r, M_r, L_r, T, P, rho, kappa, epslon, dlPdlT = ([0.0] * zone_boundaries["Nstop"] for makeArray in range(9))
+    # Initialize values of r, p, m_r, l_r, t, rho, kappa, and epsilon at the surface.
+    r, m_r, l_r, t, p, rho, kappa, epsilon, dl_pdl_t = ([0.0] * zone_boundaries["N_stop"] for makeArray in range(9))
 
     # took tog_bof out of constants because its dynamic
     tog_bf = .01
-    dlPlim = 99.9
+    dl_p_lim = 99.9
 
     r[0] = initial_cond["Rs"]
-    M_r[0] = initial_cond["Ms"]
-    L_r[0] = initial_cond["Ls"]
-    T[0] = initial_cond["T0"]
-    P[0] = initial_cond["P0"]
-    if P[0] <= 0.0 or T[0] <= 0.0:
+    m_r[0] = initial_cond["Ms"]
+    l_r[0] = initial_cond["Ls"]
+    t[0] = initial_cond["T0"]
+    p[0] = initial_cond["P0"]
+    if p[0] <= 0.0 or t[0] <= 0.0:
         rho[0] = 0.0
         kappa[0] = 0.0
-        epslon[0] = 0.0
-        print("Initial P and T = 0, setting more initials")
+        epsilon[0] = 0.0
     else:
-        [rho[0], kappa[0], epslon[0], tog_bf, ierr] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[0], T[0])
-        if ierr == 0:
-            print("Oopsy soupsy")
-            return
+        [rho[0], kappa[0], epsilon[0], tog_bf] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[0], t[0])
 
     constants["kPad"] = 0.3
     irc = 0
-    dlPdlT[0] = 4.25
-    ip1 = 0
+    dl_pdl_t[0] = 4.25
+    rho_core, eps_core, p_core, t_core, i_stop, i_goof = 0, 0, 0, 0, 0, 0
 
-    for i in range(0, zone_boundaries["Nstart"]):
+    # do 20 i = 1, Nstart
+    for i in range(0, zone_boundaries["N_start"] + 1):
         ip1 = i + 1
-        [r[ip1], M_r[ip1], L_r[ip1], T[ip1], P[ip1]] = STARTMDL(deltar, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], M_r[i], L_r[i], tog_bf, irc)
-        [rho[ip1], kappa[ip1], epslon[ip1], tog_bf, ierr] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[ip1], T[ip1])
+        [r[ip1], m_r[ip1], l_r[ip1], t[ip1], p[ip1]] = startmdl(delta_r, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], m_r[i], l_r[i], tog_bf, irc)
+        [rho[ip1], kappa[ip1], epsilon[ip1], tog_bf] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[ip1], t[ip1])
 
         # Determine whether convection will be operating in th next zone
         if i > 1:
-            dlPdlT[ip1] = log(P[ip1]/P[i])/log(T[ip1]/T[i])
+            dl_pdl_t[ip1] = log(p[ip1]/p[i])/log(t[ip1]/t[i])
         else:
-            dlPdlT[ip1] = dlPdlT[i]
-        if dlPdlT[ip1] < constants["gamrat"]:
+            dl_pdl_t[ip1] = dl_pdl_t[i]
+        if dl_pdl_t[ip1] < constants["gamrat"]:
             irc = 1
         else:
             irc = 0
-            constants["kPad"] = P[ip1]/T[ip1]**constants["gamrat"]
+            constants["kPad"] = p[ip1]/t[ip1]**constants["gamrat"]
 
         # Test to see whether the surface assumption of constant mass is still valid
-        deltaM = deltar * dMdr(r[ip1], rho[ip1])
-        M_r[ip1] = M_r[i] + deltaM
-        if abs(deltaM) > .001 * initial_cond["Ms"]:
+        delta_m = delta_r * dm_dr(r[ip1], rho[ip1])
+        m_r[ip1] = m_r[i] + delta_m
+        if abs(delta_m) > .001 * initial_cond["Ms"]:
+            print("The variation in mass has become larger than 0.001*Ms, leaving the approximation loop before Nstart was reached")
             if ip1 > 2:
                 ip1 = ip1 - 1
-            else:
-                continue
+            break
 
-        # Main integration loop
-        Nsrtp1 = ip1 + 1
-        f_im1 = [0] * 4
-        dfdr = [0] * 4
-        f_i = [0, 0, 0, 0]
+    # Main integration loop
+    nstrtip1 = ip1 + 1
+    f_im1 = [0] * 4
+    df_dr = [0] * 4
+    f_i = [0, 0, 0, 0]
 
+    for j in range(nstrtip1, zone_boundaries["N_stop"]):
+        im1 = j - 1
 
-        for i in range(Nsrtp1, zone_boundaries["Nstop"]):
-            im1 = i - 1
+        # Initialize the Runge-Kutta routine with zone i - 1 quantities and their derivatives.
+        # The pressure, mass, luminosity and temperature are stored in f_im(0-3).
+        # The derivatives of those quantities with respect to radius are in df_dr(0-3).
+        # The The resulting values for p, m_r, l_r, and t are returned in f_i(0-3)
 
-            # Initialize the Runge-Kutta routine with zone i - 1 quantites and their derivatives.
-            # The pressure, mass, luminosity and temperature are stored in f_im(0-3).
-            # The derivatives of those quantites with respect to radis are in dfdr(0-3).
-            # The The resulting values for P, M_r, L_r, and T are returned in f_i(0-3)
+        f_im1[0] = p[im1]
+        f_im1[1] = m_r[im1]
+        f_im1[2] = l_r[im1]
+        f_im1[3] = t[im1]
+        df_dr[0] = dp_dr(r[im1], m_r[im1], rho[im1])
+        df_dr[1] = dm_dr(r[im1], rho[im1])
+        df_dr[2] = dl_dr(r[im1], rho[im1], epsilon[im1])
+        df_dr[3] = dt_dr(r[im1], m_r[im1], l_r[im1], t[im1], rho[im1], kappa[im1], mu, irc)
+        runge(f_im1, df_dr, f_i, r[im1], delta_r, irc, mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu)
 
-            f_im1[0] = P[im1]
-            f_im1[1] = M_r[im1]
-            f_im1[2] = L_r[im1]
-            f_im1[3] = T[im1]
-            dfdr[0] = dPdr(r[im1], M_r[im1], rho[im1])
-            dfdr[1] = dMdr(r[im1], rho[im1])
-            dfdr[2] = dLdr(r[im1], rho[im1], epslon[im1])
-            dfdr[3] = dTdr(r[im1], M_r[im1], L_r[im1], T[im1], rho[im1], kappa[im1], mu, irc)
-            RUNGE(f_im1, dfdr, f_i, r[im1], deltar, irc, mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu)
+        # Update stellar parameters for the next zone, including adding dr to the old radius
 
-            # Update stellar parameters for the next zone, including adding dr to the old radius
+        r[j] = r[im1] + delta_r
+        p[j] = f_i[0]
+        m_r[j] = f_i[1]
+        l_r[j] = f_i[2]
+        t[j] = f_i[3]
 
-            r[i] = r[im1] + deltar
-            P[i] = f_i[0]
-            M_r[i] = f_i[1]
-            L_r[i] = f_i[2]
-            T[i] = f_i[3]
+        # Calculate the density, opacity, and energy generation rate for this zone
+        [rho[j], kappa[j], epsilon[j], tog_bf, ierr] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[j], t[j])
 
-            # Calculate the density, opacity, and energy generation rate for this zone
-            [rho[i], kappa[i], epslon[i], tog_bf, ierr] = EOS(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, P[i], T[i])
-
-            # Determine whether convection will be operating in the next zone
-            dlPdlT[i] = log(P[i]/P[im1])/log(T[i]/T[im1])
-            if dlPdlT[i] < constants["gamrat"]:
-                irc = 1
-            else:
-                irc = 0
-
-            # Check if the center has been reached. If so, set Igoof and estimate the central conditions:
-            # rhocor, epscor, Pcore, Tcore.
-
-            if r[i] < abs(deltar) and (L_r[i] > .1 * initial_cond["Ls"] or M_r[i] > .01 * initial_cond["Ms"]):
-                Igoof = 6
-            elif L_r[i] < 0.0:
-                Igoof = 5
-                rhocor = M_r[i]/(4/3*pi*r[i]**3)
-                if M_r[i] != 0:
-                    epscor = L_r[i]/M_r[i]
-                else:
-                    epscor = 0.0
-                Pcore = P[i] + 2/3 * pi * constants["G"] * rhocor**2 * r[i]**2
-                Tcore = Pcore * mu * constants["m_H"]/(rhocor*constants["k_B"])
-            elif M_r[i] < 0.0:
-                Igoof = 4
-                rhocor = 0.0
-                epscor = 0.0
-                Pcore = 0.0
-                Tcore = 0.0
-            elif r[i] < .02 * initial_cond["Rs"] and M_r[i] < .01 * initial_cond["Ms"] and L_r[i] < .1 * initial_cond["Ls"]:
-                rhocor = M_r[i] / (4/3 * pi * r[i]**3)
-                rhomax = 10.0 * (rho[i]/rho[im1]) * rho[i]
-                epscor = L_r[i] / M_r[i]
-                Pcore = P[i] + 2/3 * pi * constants["G"] * rhocor**2 * r[i]**2
-                Tcore = Pcore * mu * constants["m_H"] / (rhocor * constants["k_B"])
-                if rhocor < rho[i] or rhocor > rhomax:
-                    Igoof = 1
-                elif epscor < epslon[i]:
-                    Igoof = 2
-                elif Tcore < T[i]:
-                    Igoof = 3
-                else:
-                    Igoof = 0
-            if Igoof != -1:
-                istop = i
-                # Loop
-                continue
-
-            # Change step size?
-            if flags["idrflg"] == 0 and M_r[i] < .99 * initial_cond["Ms"]:
-                deltar = -initial_cond["Rs"]/100.0
-                flags["idrflg"] = 1
-            if flags["idrflg"] == 1 and deltar > .5 * r[i]:
-                deltar = -initial_cond["Rs"]/5000
-                flags["idrflg"] = 2
-            istop = i
-        # End of loop
-
-        rhocor = M_r[istop] / (4/3 * pi * r[istop]**3)
-        epscor = L_r[istop] / M_r[istop]
-        Pcore = P[istop] + 2 / 3 * pi * constants["G"] * rhocor ** 2 * r[istop] ** 2
-        Tcore = Pcore * mu * constants["m_H"] / (rhocor * constants["k_B"])
-
-        if Igoof != 0:
-            print(goof[Igoof])
+        # Determine whether convection will be operating in the next zone
+        dl_pdl_t[j] = log(p[j]/p[im1])/log(t[j]/t[im1])
+        if dl_pdl_t[j] < constants["gamrat"]:
+            irc = 1
         else:
-            print("Success")
+            irc = 0
+
+        # Check if the center has been reached. If so, set i_goof and estimate the central conditions:
+        # rho_core, eps_core, p_core, t_core.
+
+        if r[j] < abs(delta_r) and (l_r[j] > .1 * initial_cond["Ls"] or m_r[j] > .01 * initial_cond["Ms"]):
+            i_goof = 6
+        elif l_r[j] < 0.0:
+            i_goof = 5
+            rho_core = m_r[j]/(4/3*pi*r[j]**3)
+            if m_r[j] != 0:
+                eps_core = l_r[j]/m_r[j]
+            else:
+                eps_core = 0.0
+            p_core = p[j] + 2/3 * pi * constants["G"] * rho_core**2 * r[j]**2
+            t_core = p_core * mu * constants["m_H"]/(rho_core*constants["k_B"])
+        elif m_r[j] < 0.0:
+            i_goof = 4
+            rho_core = 0.0
+            eps_core = 0.0
+            p_core = 0.0
+            t_core = 0.0
+        elif r[j] < .02 * initial_cond["Rs"] and m_r[j] < .01 * initial_cond["Ms"] and l_r[j] < .1 * initial_cond["Ls"]:
+            rho_core = m_r[j] / (4/3 * pi * r[j]**3)
+            rho_max = 10.0 * (rho[j]/rho[im1]) * rho[j]
+            eps_core = l_r[j] / m_r[j]
+            p_core = p[j] + 2/3 * pi * constants["G"] * rho_core**2 * r[j]**2
+            t_core = p_core * mu * constants["m_H"] / (rho_core * constants["k_B"])
+            if rho_core < rho[j] or rho_core > rho_max:
+                i_goof = 1
+            elif eps_core < epsilon[j]:
+                i_goof = 2
+            elif t_core < t[j]:
+                i_goof = 3
+            else:
+                i_goof = 0
+        if i_goof != -1:
+            i_stop = j
+            # Loop
+            break
+
+        # Change step size?
+        if flags["idrflg"] == 0 and m_r[j] < .99 * initial_cond["Ms"]:
+            delta_r = -initial_cond["Rs"]/100.0
+            flags["idrflg"] = 1
+        if flags["idrflg"] == 1 and delta_r > .5 * r[j]:
+            delta_r = -initial_cond["Rs"]/5000
+            flags["idrflg"] = 2
+        i_stop = j
+    # End of loop
+
+    rho_core = m_r[i_stop] / (4/3 * pi * r[i_stop]**3)
+    eps_core = l_r[i_stop] / m_r[i_stop]
+    p_core = p[i_stop] + 2 / 3 * pi * constants["G"] * rho_core ** 2 * r[i_stop] ** 2
+    t_core = p_core * mu * constants["m_H"] / (rho_core * constants["k_B"])
+
+    if i_goof != 0:
+        print(goof[i_goof])
+    else:
+        print("Success")
 
     # Print the central conditions
-    Rcrat = r[istop] / initial_cond["Rs"]
-    if Rcrat < -9.999:
-        Rcrat = -9.999
-    Mcrat = M_r[istop] / initial_cond["Ms"]
-    if Mcrat < -9.999:
-        Mcrat = -9.999
-    Lcrat = L_r[istop] / initial_cond["Ls"]
-    if Lcrat < -9.999:
-        Lcrat = -9.999
+    r_crat = r[i_stop] / initial_cond["Rs"]
+    if r_crat < -9.999:
+        r_crat = -9.999
+    m_crat = m_r[i_stop] / initial_cond["Ms"]
+    if m_crat < -9.999:
+        m_crat = -9.999
+    l_crat = l_r[i_stop] / initial_cond["Ls"]
+    if l_crat < -9.999:
+        l_crat = -9.999
 
-    solar_crat_table = [["","Solar", "Crat"],["Mass", initial_cond["Msolar"], Mcrat], ["Radius", initial_cond["Rsolar"], Rcrat], ["Luminosity", initial_cond["Lsolar"], Lcrat]]
+    solar_crat_table = [["", "Solar", "Crat"], ["Mass", initial_cond["Msolar"], m_crat], ["Radius", initial_cond["Rsolar"], r_crat], ["Luminosity", initial_cond["Lsolar"], l_crat]]
     print(tabulate(solar_crat_table), headers="firstrow")
     mass_table = [["Hydrogen", "Helium", "Metals"], ["Mass Fractions", mass_fractions["X"], mass_fractions["Y"], mass_fractions["Z"]]]
     print(tabulate(mass_table), headers="firstrow")
-    core_table = [["Rho", "Temperature", "Pressure", "Epsilon"], [rhocor, Tcore, Pcore, epscor]]
+    core_table = [["Rho", "Temperature", "Pressure", "Epsilon"], [rho_core, t_core, p_core, eps_core]]
     print(tabulate(core_table, headers="firstrow"))
 
     # Print data from the cetner of the start outward, labeling convective or radiative zones zones.
-    for ic in range(0, istop):
-        i = istop - ic + 1
-        Qm = 1.0 - M_r[i]/initial_cond["Ms"]
-        if dlPdlT[i] < constants["gamrat"]:
+    for ic in range(0, i_stop):
+        i = i_stop - ic + 1
+        qm = 1.0 - m_r[i] / initial_cond["Ms"]
+        '''if dl_pdl_t[i] < constants["gamrat"]:
             rcf = 'c'
         else:
             rcf = 'r'
-        if abs(dlPdlT[i]) > dlPlim:
-            if dlPdlT[i] >= 0:
-                dlPdlT = dlPlim
+        if abs(dl_pdl_t[i]) > dl_p_lim:
+            if dl_pdl_t[i] >= 0:
+                dl_pdl_t = dl_p_lim
             else:
-                dlPdlT = -dlPlim
+                dl_pdl_t = -dl_p_lim
             clim = '*'
         else:
             clim = ' '
-        results = [["R [" + str(i) + "]", r[i]], ["Qm", Qm], ["L_r[" + str(i) + "]", L_r[i]], ["T[" + str(i) + "", T[i]],
-                   ["P["+ str(i) + "]", P[i]], ["Rho[" + str(i) + "]", rho[i]], ["Kappa[" + str(i) + "]", kappa[i]],
-                   ["Epsilon[" + str(i) + "]", epslon[i]], ["dlPdlT[" + str(i) + "]", dlPdlT[i]]]
+        '''
+        results = [["R [" + str(i) + "]", r[i]], ["Qm", qm], ["l_r[" + str(i) + "]", l_r[i]], ["t[" + str(i) + "", t[i]],
+                   ["p["+ str(i) + "]", p[i]], ["Rho[" + str(i) + "]", rho[i]], ["Kappa[" + str(i) + "]", kappa[i]],
+                   ["Epsilon[" + str(i) + "]", epsilon[i]], ["dl_pdl_t[" + str(i) + "]", dl_pdl_t[i]]]
         print(tabulate(results))
     print("**** The integration has been completed ****")
-
-# Returns r, M_rip1, L_rip1, T_ip1, P_ip1
-def STARTMDL(deltar, X, Z, mu, Rs, r_i, M_ri, L_ri, tog_bf, irc):
-
-    r = r_i + deltar
-    M_rip1 = M_ri
-    L_rip1 = L_ri
-
-    if irc == 0:
-        T_ip1 = constants["G"] * M_rip1 * mu * constants["m_H"]/(4.25*constants["k_B"])*(1.0/r - 1.0/Rs)
-        A_bf = 4.34e+25 * Z * (1.0 + X)/tog_bf
-        A_ff = 3.68e+22 * constants["g_ff"] * (1.0 - Z) * (1.0 + X)
-        Afac = A_bf + A_ff
-
-        P_ip1 = sqrt((1.0/4.25)*(16.0/3.0*pi*constants["a"]*constants["c"])*(constants["G"] * M_rip1/L_rip1) *
-                     (constants["k_B"]/(Afac * mu * constants["m_H"]))) * T_ip1**4.25
-
-    # This is the convective approximation
-    else:
-        T_ip1 = constants["G"] * M_rip1 * mu * constants["m_H"] / constants["k_B"] * (1.0/r - 1.0/Rs)/constants["gamrat"]
-        P_ip1 = constants["kPad"]*T_ip1**constants["gamrat"]
-
-    return [r, M_rip1, L_rip1, T_ip1, P_ip1]
 
 #calculates the values of density,opacity, guillotine-to-gaunt ration, energy gen rate
 # for a radius r
 
-# instead of passing in ierr going to use the return as an error code. 0 for success.
-# Returns [rho, kappa, epslon, tog_bf]
-def EOS(X, Z, XCNO, mu, P, T):
-
-    oneo3 = .333333333333
-    twoo3 = .666666666667
-
-    # solve for density from the ideal gas law
-    if T <= 0.0 or P <= 0.0:
-       print('Temperature or Pressure less than equal to 0, in EOS')
-       return [0, 0, 0, 0, 1]
-    Prad = constants['a']*(T**4)/3.0
-    Pgas = P - Prad
-    rho = (mu * constants['m_H']/constants['k_B']) * (Pgas/T)
-    if rho < 0.0:
-        print('Rho less than 0, in EOS')
-        return [0, 0, 0, 0, 1]
-    # Calc opacity, including guillatine-to-gaunt factor ratio
-    tog_bf = 2.82 * (rho*(1+X))**.2
-    k_bf = 4.34E25/tog_bf*Z(1 + X)* rho/(T**3.5)
-    k_ff = 3.68E22*constants["g_ff"]*(1-Z)*(1+X)*rho/(T**3.5)
-    k_e = .2*(1+X)
-    kappa = k_bf + k_ff + k_e
-
-    #calc eneregy generation by pp chain and CNO cycle
-    #The screening factor for the pp chain is calculated as fpp
-
-    T6 = T*1E-6
-    fx = .133 * X * ((3+X)*rho)**.5 /T6**1.5
-    fpp = 1 + fx*X
-    psipp = 1 + 1.412E8 * (1/X-1)*exp(-49.98*T6**-oneo3)
-    Cpp = 1 + .0123*T6*oneo3 + .0109*T6**(-twoo3) - .000149*T6
-    epspp = 2.38E6 * rho * X * X * fpp * psipp * Cpp * T6**(-twoo3) * exp(-33.8*T6**(-oneo3))
-    CCNO = 1 + .0027*T6**oneo3 - .0078 * T6**twoo3 - .000149*T6
-    epsCNO = 8.67E27 * rho * X * XCNO * CCNO * T6**(-twoo3) * exp(-152.28 * T6**(-oneo3))
-    epslon = epspp + epsCNO
-
-    return [rho, kappa, epslon, tog_bf, 0]
-
 # 'Hydrostatic equilibrium Pressure Gradient
-def dPdr(r,M_r,rho):
+def dp_dr(r, m_r, rho):
     #dPdr
-    return -constants["G"] * rho * M_r * r**-2
+    return -constants["G"] * rho * m_r * r**-2
 
 # 'Conservation of Mass
-def dMdr(r,rho):
+def dm_dr(r, rho):
     #dMdr
     return 4 * pi * rho * r**2
 
 
 # 'luminosity thingy
-def dLdr(r, rho, epslon):
+def dl_dr(r, rho, epslon):
     #dLdr
     return 4 * pi * rho * epslon * r**2
 
 
 # 'The temp one
-def dTdr(r, M_r, L_r, T, rho, kappa, mu, irc):
+def dt_dr(r, m_r, l_r, t, rho, kappa, mu, irc):
     if irc == 0:
         #dTdr
-        return - (3/(16 * pi * constants["a"] * constants["c"])) * kappa * rho * T**-3 * L_r * r**-2
+        return -(3/(16 * pi * constants["a"] * constants["c"])) * kappa * rho * t ** -3 * l_r * r ** -2
     else:
         #dTdr
-        return -1 / constants["gamrat"] * constants["G"] * M_r * r**-2 * mu * constants["m_H"] / constants["k_B"]
+        return -1 / constants["gamrat"] * constants["G"] * m_r * r ** -2 * mu * constants["m_H"] / constants["k_B"]
 
-def RUNGE(f_im1, dfdr, f_i, r_im1, deltar, irc, X, Z, XCNO, mu):
+
+# Returns r, M_rip1, L_rip1, T_ip1, P_ip1
+def startmdl(delta_r, x, z, mu, rs, r_i, m_ri, l_ri, tog_bf, irc):
+
+    r = r_i + delta_r
+    m_rip1 = m_ri
+    l_rip1 = l_ri
+
+    if irc == 0:
+        t_ip1 = constants["G"] * m_rip1 * mu * constants["m_H"]/(4.25*constants["k_B"])*(1.0 / r - 1.0 / rs)
+        a_bf = 4.34e+25 * z * (1.0 + x) / tog_bf
+        a_ff = 3.68e+22 * constants["g_ff"] * (1.0 - z) * (1.0 + x)
+        afac = a_bf + a_ff
+
+        p_ip1 = sqrt((1.0/4.25)*(16.0/3.0*pi*constants["a"]*constants["c"])*(constants["G"] * m_rip1/l_rip1) *
+                     (constants["k_B"]/(afac * mu * constants["m_H"]))) * t_ip1**4.25
+
+    # This is the convective approximation
+    else:
+        t_ip1 = constants["G"] * m_rip1 * mu * constants["m_H"] / constants["k_B"] * (1.0 / r - 1.0 / rs) / constants["gamrat"]
+        p_ip1 = constants["kPad"]*t_ip1**constants["gamrat"]
+
+    return [r, m_rip1, l_rip1, t_ip1, p_ip1]
+
+def runge(f_im1, dfdr, f_i, r_im1, deltar, irc, x, z, xcno, mu):
     f_temp = [0] * 4
     df1 = [0] * 4
     df2 = [0] * 4
@@ -360,28 +320,69 @@ def RUNGE(f_im1, dfdr, f_i, r_im1, deltar, irc, X, Z, XCNO, mu):
     dr16 = deltar/6.0
     r12 = r_im1 + dr12
     r_i = r_im1 + deltar
-    # Calculate intermediate derviatives from the fundamental stellar structure equations found in subroutine fundeq.
+    # Calculate intermediate derivatives from the fundamental stellar structure equations found in subroutine fundeq.
     for i in range(0, 4):
         f_temp[i] = f_im1[i] + dr12*dfdr[i]
-    FUNDEQ(r12, f_temp, df1, irc, X, Z, XCNO, mu)
+    fundeq(r12, f_temp, df1, irc, x, z, xcno, mu)
     for i in range(0, 4):
         f_temp[i] = f_im1[i] + dr12*df1[i]
-    FUNDEQ(r12, f_temp, df2, irc, X, Z, XCNO, mu)
+    fundeq(r12, f_temp, df2, irc, x, z, xcno, mu)
     for i in range(0, 4):
         f_temp[i] = f_im1[i] + deltar*df2[i]
-    FUNDEQ(r_i, f_temp, df3, irc, X, Z, XCNO, mu)
+    fundeq(r_i, f_temp, df3, irc, x, z, xcno, mu)
     for i in range(0, 4):
         f_i[i] = f_im1[i] + dr16*(dfdr[i] + 2*df1[i] + 2.0 * df2[i] + df3[i])
 
-def FUNDEQ(r, f, dfdr, irc, X, Z, XCNO, mu):
-    P = f[0]
-    M_r = f[1]
-    L_r = f[2]
-    T = f[3]
-    [rho, kappa, epslon, tog_bf, ierr] = EOS(X, Z, XCNO, mu, P, T)
-    dfdr[0] = dPdr(r, M_r, rho)
-    dfdr[1] = dMdr(r, rho)
-    dfdr[2] = dLdr(r, rho, epslon)
-    dfdr[3] = dTdr(r, M_r, L_r, T, rho, kappa, mu, irc)
-    
-STATSTAR()
+
+def fundeq(r, f, dfdr, irc, x, z, xcno, mu):
+    p = f[0]
+    m_r = f[1]
+    l_r = f[2]
+    t = f[3]
+    [rho, kappa, epslon, tog_bf] = eos(x, z, xcno, mu, p, t)
+    dfdr[0] = dp_dr(r, m_r, rho)
+    dfdr[1] = dm_dr(r, rho)
+    dfdr[2] = dl_dr(r, rho, epslon)
+    dfdr[3] = dt_dr(r, m_r, l_r, t, rho, kappa, mu, irc)
+
+
+# instead of passing in ierr going to use the return as an error code. 0 for success.
+# Returns [rho, kappa, epslon, tog_bf]
+def eos(x, z, xcno, mu, p, t):
+
+    oneo3 = .333333333333
+    twoo3 = .666666666667
+
+    # solve for density from the ideal gas law
+    if t <= 0.0 or p <= 0.0:
+        raise SystemExit('Temperature or Pressure less than equal to 0, in EOS')
+    prad = constants['a'] * (t ** 4) / 3.0
+    pgas = p - prad
+    rho = (mu * constants['m_H']/constants['k_B']) * (pgas / t)
+    if rho < 0.0:
+        raise SystemExit("Rho is less than 0, in EOS")
+    # Calc opacity, including guillatine-to-gaunt factor ratio
+
+    tog_bf = 2.82 * (rho * (1 + x)) ** .2
+    k_bf = 4.34E25 / tog_bf * z(1 + x) * rho / (t ** 3.5)
+    k_ff = 3.68E22 * constants["g_ff"] * (1 - z) * (1 + x) * rho / (t ** 3.5)
+    k_e = .2*(1 + x)
+    kappa = k_bf + k_ff + k_e
+
+    #calc eneregy generation by pp chain and CNO cycle
+    #The screening factor for the pp chain is calculated as fpp
+
+    t6 = t * 1E-6
+    fx = .133 * x * ((3 + x) * rho) ** .5 / t6 ** 1.5
+    fpp = 1 + fx * x
+    psipp = 1 + 1.412E8 * (1 / x - 1) * exp(-49.98 * t6 ** -oneo3)
+    cpp = 1 + .0123*t6*oneo3 + .0109*t6**(-twoo3) - .000149*t6
+    epspp = 2.38E6 * rho * x * x * fpp * psipp * cpp * t6 ** (-twoo3) * exp(-33.8 * t6 ** (-oneo3))
+    ccno = 1 + .0027*t6**oneo3 - .0078 * t6**twoo3 - .000149*t6
+    eps_cno = 8.67E27 * rho * x * xcno * ccno * t6 ** (-twoo3) * exp(-152.28 * t6 ** (-oneo3))
+    epslon = epspp + eps_cno
+
+    return [rho, kappa, epslon, tog_bf]
+
+
+statstar()
