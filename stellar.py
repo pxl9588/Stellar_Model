@@ -1,16 +1,18 @@
 from math import *
+import matplotlib as plt
+import numpy as np
 try:
     from tabulate import *
 except:
     print("pip install tabulate brah")
 GAMMA = 5/3
 constants = {"sigma": 5.67051e-5, "c": 2.99792458e+10, "a": 7.56591e-15, "G": 6.67259e-8, "k_B": 1.38065e-16,
-                 "m_H": 1.673534e-24, "pi": 3.141592654, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
+                 "m_H": 1.673534e-24, "pi": np.pi, "gamma":  GAMMA, "gamrat":  GAMMA / (GAMMA - 1.0),
                  "kPad":  1.0, "g_ff": 1.0, "Rsun": 6.9599e+10, "Msun": 1.989e+33, "Lsun": 3.826e+33}
 eos_format_dict = {"100": "Negative Pressure or Temperature",
-               "200": "Negative Density, radiation pressure is probably too great."}
+               "200": "Negative Density, radiation pressure is probably too great. EOS"}
 format_dict = {"100": " You must have X + Z + Y = 1",
-               "200": "The variation is mass has become larger than 0.001*Ms",
+               "200": "The variation in mass has become larger than 0.001*Mstar",
                "300": "The problem occured in the Runge-Kutta routine",
                "5000": "Model has some problems",
                "5100": "The number of allowed shells has been exceeded",
@@ -27,7 +29,8 @@ format_dict = {"100": " You must have X + Z + Y = 1",
                 }
 diff_eqs = {"dMdr": 0, "dPdr": 0, "dLdr": 0, "dTdr": 0}
 
-def statstar():
+def statstar(iteration, arg):
+    f = open("results"+str(arg)+".txt", 'w')
     #  FLAGS:
     #  ---------------------------------------------
     #  idrflg {0 = Rs/1000, 1 = Rs/100 , 2 = Rs/5000} initial dr flag
@@ -44,23 +47,23 @@ def statstar():
 
     #kPad = p/t^gamrat
 
-    # initial_cond = [Msolar, Lsolar, Te]
-    initial_cond = {"Msolar": 0, "Lsolar": 0, "Rsolar": 0, "Te": 0, "Ms": 0, "Ls": 0, "Rs": 0, "T0": 0, "P0": 0}
+    # initial_cond = [Msolar, Lstar, Te]
+    initial_cond = {"M_star_solar": 0, "L_star_solar": 0, "Rsolar": 0, "Te": 0, "M_star_grams": 0, "L_star_ergs": 0, "R_star_cm": 0, "T0": 0, "P0": 0}
 
     # mass_fractions = [X, Y, Z]
     mass_fractions = {"X": 0, "Y": 0, "Z": 0, "XCNO": 0}
 
     # OPEN SOME FILE FOR SOMETHING
 
-    initial_cond["Msolar"] = float(input("Enter the mass of the star (in solar units): "))
+    initial_cond["M_star_solar"] = float(arg[0])
 
-    initial_cond["Lsolar"] = float(input("Enter the luminosity of the star (in solar units): "))
+    initial_cond["L_star_solar"] = float(arg[1])
 
-    initial_cond["Te"] = float(input("Enter the effective temperature of the star (in K): "))
+    initial_cond["Te"] = float(arg[2])
 
-    mass_fractions["X"] = float(input("Enter the mass fraction of hydrogen (X): "))
+    mass_fractions["X"] = float(arg[3])
 
-    mass_fractions["Z"] = float(input("Enter the mass fraction of metals (Z): "))
+    mass_fractions["Z"] = float(arg[4])
 
     mass_fractions["Y"] = 1.0 - mass_fractions["X"] - mass_fractions["Z"]
     if mass_fractions["Y"] < 0.0:
@@ -70,16 +73,17 @@ def statstar():
     mass_fractions["XCNO"] = mass_fractions["Z"] / 2.0
 
     # Calculate the mass, luminosity, and radius of the star
-    initial_cond["Ms"] = initial_cond["Msolar"] * constants["Msun"]
-    initial_cond["Ls"] = initial_cond["Lsolar"] * constants["Lsun"]
-    initial_cond["Rs"] = sqrt(initial_cond["Ls"]/(4.0*constants["pi"]*constants["sigma"]))/initial_cond["Te"]**2
-    initial_cond["Rsolar"] = initial_cond["Rs"] / constants["Rsun"]
-
-    resultDictionary = {"zone_boundaries": zone_boundaries, "initial_cond": initial_cond,
-                        "mass_fractions": mass_fractions, "constants": constants}
+    initial_cond["M_star_grams"] = initial_cond["M_star_solar"] * constants["Msun"]
+    if initial_cond["M_star_solar"] > 5:
+        delta_m_allowed = .1
+    else:
+        delta_m_allowed = .001
+    initial_cond["L_star_ergs"] = initial_cond["L_star_solar"] * constants["Lsun"]
+    initial_cond["R_star_cm"] = np.sqrt(initial_cond["L_star_ergs"]/(4.0*constants["pi"]*constants["sigma"]))/initial_cond["Te"]**2
+    initial_cond["R_star_solar"] = initial_cond["R_star_cm"] / constants["Rsun"]
 
     # Begin with a very small step size since surface conditions vary rapidly.
-    delta_r = -initial_cond["Rs"] / 1000.0
+    delta_r = -initial_cond["R_star_cm"] / 1000.0
 
     # Calculate mean molecular weight mu assuming complete ionization
     mu = 1.0 / (2.0 * mass_fractions["X"] + .75 * mass_fractions["Y"] + .5 * mass_fractions["Z"])
@@ -91,9 +95,9 @@ def statstar():
     tog_bf = .01
     dl_p_lim = 99.9
 
-    r[0] = initial_cond["Rs"]
-    m_r[0] = initial_cond["Ms"]
-    l_r[0] = initial_cond["Ls"]
+    r[0] = initial_cond["R_star_cm"]
+    m_r[0] = initial_cond["M_star_grams"]
+    l_r[0] = initial_cond["L_star_ergs"]
     t[0] = initial_cond["T0"]
     p[0] = initial_cond["P0"]
     if p[0] <= 0.0 or t[0] <= 0.0:
@@ -104,31 +108,37 @@ def statstar():
         [rho[0], kappa[0], epsilon[0], tog_bf] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[0], t[0])
 
     constants["kPad"] = 0.3
-    irc = 1
+    irc = 0
     dl_pdl_t[0] = 4.25
     rho_core, eps_core, p_core, t_core, i_stop, i_goof = 0, 0, 0, 0, 0, 0
 
     # do 20 i = 1, Nstart
-    for i in range(0, zone_boundaries["N_start"] + 1):
+    for i in range(0, zone_boundaries["N_start"]):
         ip1 = i + 1
-        [r[ip1], m_r[ip1], l_r[ip1], t[ip1], p[ip1]] = startmdl(delta_r, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["Rs"], r[i], m_r[i], l_r[i], tog_bf, irc)
+        [r[ip1], m_r[ip1], l_r[ip1], t[ip1], p[ip1]] = startmdl(delta_r, mass_fractions["X"], mass_fractions["Z"], mu, initial_cond["R_star_cm"], r[i], m_r[i], l_r[i], tog_bf, irc)
         [rho[ip1], kappa[ip1], epsilon[ip1], tog_bf] = eos(mass_fractions["X"], mass_fractions["Z"], mass_fractions["XCNO"], mu, p[ip1], t[ip1])
 
         # Determine whether convection will be operating in th next zone
-        if i > 1:
+        if i > 0:
             dl_pdl_t[ip1] = log(p[ip1]/p[i])/log(t[ip1]/t[i])
         else:
             dl_pdl_t[ip1] = dl_pdl_t[i]
+
         if dl_pdl_t[ip1] < constants["gamrat"]:
+            print(p[i], p[ip1])
+            print(t[i], t[ip1])
+            print(dl_pdl_t[ip1])
             irc = 1
         else:
             irc = 0
+            #print(constants["kPad"])
             constants["kPad"] = p[ip1]/t[ip1]**constants["gamrat"]
+           # print(constants["kPad"])
 
         # Test to see whether the surface assumption of constant mass is still valid
         delta_m = delta_r * dm_dr(r[ip1], rho[ip1])
         m_r[ip1] = m_r[i] + delta_m
-        if abs(delta_m) > .001 * initial_cond["Ms"]:
+        if abs(delta_m) > delta_m_allowed * initial_cond["M_star_grams"]:
             print(format_dict["200"])
             if ip1 > 2:
                 ip1 = ip1 - 1
@@ -140,7 +150,7 @@ def statstar():
     df_dr = [0] * 4
     f_i = [0, 0, 0, 0]
 
-    for j in range(nstrtip1, zone_boundaries["N_stop"] + 1):
+    for j in range(nstrtip1, zone_boundaries["N_stop"]):
         im1 = j - 1
 
         # Initialize the Runge-Kutta routine with zone i - 1 quantities and their derivatives.
@@ -179,7 +189,7 @@ def statstar():
         # Check if the center has been reached. If so, set i_goof and estimate the central conditions:
         # rho_core, eps_core, p_core, t_core.
 
-        if r[j] < abs(delta_r) and (l_r[j] >= .1 * initial_cond["Ls"] or m_r[j] >= .01 * initial_cond["Ms"]):
+        if r[j] < abs(delta_r) and (l_r[j] >= .1 * initial_cond["L_star_ergs"] or m_r[j] >= .01 * initial_cond["M_star_grams"]):
             i_goof = 6
         elif l_r[j] <= 0.0:
             i_goof = 5
@@ -196,7 +206,7 @@ def statstar():
             eps_core = 0.0
             p_core = 0.0
             t_core = 0.0
-        elif r[j] < .02 * initial_cond["Rs"] and m_r[j] < .01 * initial_cond["Ms"] and l_r[j] < .1 * initial_cond["Ls"]:
+        elif r[j] < .02 * initial_cond["R_star_cm"] and m_r[j] < .01 * initial_cond["M_star_grams"] and l_r[j] < .1 * initial_cond["L_star_ergs"]:
             rho_core = m_r[j] / (4/3 * pi * r[j]**3)
             rho_max = 10.0 * (rho[j]/rho[im1]) * rho[j]
             eps_core = l_r[j] / m_r[j]
@@ -213,14 +223,14 @@ def statstar():
         if i_goof != -1:
             i_stop = j
             # Loop
-            break
+            continue
 
         # Change step size?
-        if flags["idrflg"] == 0 and m_r[j] < .99 * initial_cond["Ms"]:
-            delta_r = -initial_cond["Rs"]/100.0
+        if flags["idrflg"] == 0 and m_r[j] < .99 * initial_cond["M_star_grams"]:
+            delta_r = -initial_cond["R_star_cm"]/100.0
             flags["idrflg"] = 1
         if flags["idrflg"] == 1 and delta_r > .5 * r[j]:
-            delta_r = -initial_cond["Rs"]/5000
+            delta_r = -initial_cond["R_star_cm"]/5000
             flags["idrflg"] = 2
         i_stop = j
     # End of loop
@@ -258,17 +268,17 @@ def statstar():
         print(format_dict["7000"])
 
     # Print the central conditions
-    r_crat = r[i_stop] / initial_cond["Rs"]
+    r_crat = r[i_stop] / initial_cond["R_star_cm"]
     if r_crat < -9.999:
         r_crat = -9.999
-    m_crat = m_r[i_stop] / initial_cond["Ms"]
+    m_crat = m_r[i_stop] / initial_cond["M_star_grams"]
     if m_crat < -9.999:
         m_crat = -9.999
-    l_crat = l_r[i_stop] / initial_cond["Ls"]
+    l_crat = l_r[i_stop] / initial_cond["L_star_ergs"]
     if l_crat < -9.999:
         l_crat = -9.999
 
-    solar_crat_table = [["", "Solar", "Crat"], ["Mass", initial_cond["Msolar"], m_crat], ["Radius", initial_cond["Rsolar"], r_crat], ["Luminosity", initial_cond["Lsolar"], l_crat]]
+    solar_crat_table = [["", "Solar", "Crat"], ["Mass", initial_cond["M_star_solar"], m_crat], ["Radius", initial_cond["R_star_solar"], r_crat], ["Luminosity", initial_cond["L_star_solar"], l_crat]]
     print("      Solar Crat Table")
     print(tabulate(solar_crat_table, headers="firstrow"))
     print("             Mass Fractions Table")
@@ -279,30 +289,24 @@ def statstar():
     print(tabulate(core_table, headers="firstrow"))
     print("----------------------------------------------")
 
+    f.write("R, P, T, Rho, Kappa, Epsilon, Qm, L_r, dlPlT\n")
     # Print data from the cetner of the start outward, labeling convective or radiative zones zones.
     for ic in range(0, i_stop):
-        i = i_stop - ic + 1
-        qm = 1.0 - m_r[i] / initial_cond["Ms"]
-        '''if dl_pdl_t[i] < constants["gamrat"]:
-            rcf = 'c'
-        else:
-            rcf = 'r'
-        if abs(dl_pdl_t[i]) > dl_p_lim:
-            if dl_pdl_t[i] >= 0:
-                dl_pdl_t = dl_p_lim
-            else:
-                dl_pdl_t = -dl_p_lim
-            clim = '*'
-        else:
-            clim = ' '
-        '''
+        i = i_stop - ic
+        qm = 1.0 - m_r[i] / initial_cond["M_star_grams"]
+
         results = [["i = " + str(i), ""], ["R [" + str(i) + "]", r[i]], ["Qm", qm], ["l_r[" + str(i) + "]", l_r[i]],
                    ["t[" + str(i) + "]", t[i]], ["p[" + str(i) + "]", p[i]], ["Rho[" + str(i) + "]", rho[i]],
                    ["Kappa[" + str(i) + "]", kappa[i]], ["Epsilon[" + str(i) + "]", epsilon[i]],
                    ["dl_pdl_t[" + str(i) + "]", dl_pdl_t[i]]]
+        line_text = str(r[i]/constants["Rsun"]) + ", " + str(p[i]) + ", " + str(t[i]) + ", " + str(rho[i]) + ", " + str(kappa[i]) + ", " + str(epsilon[i]) + ", " + str(qm) + ", " + str(l_r[i]) + ", " + str(dl_pdl_t[i])
+        f.write(line_text+"\n")
         print(tabulate(results, headers="firstrow", numalign="right"))
         print("------------------------")
     print("**** The integration has been completed ****")
+    g = open("filenames.txt", "a")
+    g.write("results"+str(arg)+".txt\n")
+
 
 #calculates the values of density,opacity, guillotine-to-gaunt ration, energy gen rate
 # for a radius r
@@ -328,10 +332,10 @@ def dl_dr(r, rho, epslon):
 def dt_dr(r, m_r, l_r, t, rho, kappa, mu, irc):
     if irc == 0:
         #dTdr
-        return -(3.0/(16.0 * constants["pi"] * constants["a"] * constants["c"])) * kappa * rho * t ** -3 * l_r * r ** -2
+        return -(3.0/(16.0 * constants["pi"] * constants["a"] * constants["c"])) * kappa * rho / t ** 3 * l_r / r ** 2
     else:
         #dTdr
-        return -1.0 / constants["gamrat"] * constants["G"] * m_r * r ** -2 * mu * constants["m_H"] / constants["k_B"]
+        return -1.0 / constants["gamrat"] * constants["G"] * m_r / r ** 2 * mu * constants["m_H"] / constants["k_B"]
 
 
 # Returns r, M_rip1, L_rip1, T_ip1, P_ip1
@@ -430,5 +434,6 @@ def eos(x, z, xcno, mu, p, t):
 
     return [rho, kappa, epslon, tog_bf]
 
-
-statstar()
+# for i in range(0,3)::
+statstar(0, [1, 1, 5700, .7, .02])
+statstar(0, [2, 5, 3000, .7, .02])
