@@ -29,8 +29,7 @@ format_dict = {"100": " You must have X + Z + Y = 1",
                 }
 diff_eqs = {"dMdr": 0, "dPdr": 0, "dLdr": 0, "dTdr": 0}
 
-def statstar(iteration, arg):
-    f = open("results"+str(arg)+".txt", 'w')
+def statstar(arg):
     #  FLAGS:
     #  ---------------------------------------------
     #  idrflg {0 = Rs/1000, 1 = Rs/100 , 2 = Rs/5000} initial dr flag
@@ -43,7 +42,7 @@ def statstar(iteration, arg):
 
     # N_start number of steps for which starting equations are used
     # N_stop maximum number of allowed zones
-    zone_boundaries = {"N_start": 10, "N_stop": 999}  # N_start,N_stop
+    zone_boundaries = {"N_start": 10, "N_stop": 399}  # N_start,N_stop
 
     #kPad = p/t^gamrat
 
@@ -83,7 +82,7 @@ def statstar(iteration, arg):
     initial_cond["R_star_solar"] = initial_cond["R_star_cm"] / constants["Rsun"]
 
     # Begin with a very small step size since surface conditions vary rapidly.
-    delta_r = -initial_cond["R_star_cm"] / 1000.0
+    delta_r = -initial_cond["R_star_cm"] / zone_boundaries["N_stop"] + 1
 
     # Calculate mean molecular weight mu assuming complete ionization
     mu = 1.0 / (2.0 * mass_fractions["X"] + .75 * mass_fractions["Y"] + .5 * mass_fractions["Z"])
@@ -125,9 +124,6 @@ def statstar(iteration, arg):
             dl_pdl_t[ip1] = dl_pdl_t[i]
 
         if dl_pdl_t[ip1] < constants["gamrat"]:
-            print(p[i], p[ip1])
-            print(t[i], t[ip1])
-            print(dl_pdl_t[ip1])
             irc = 1
         else:
             irc = 0
@@ -150,7 +146,7 @@ def statstar(iteration, arg):
     df_dr = [0] * 4
     f_i = [0, 0, 0, 0]
 
-    for j in range(nstrtip1, zone_boundaries["N_stop"]):
+    for j in range(nstrtip1, zone_boundaries["N_stop"] - int(zone_boundaries["N_stop"]*.2)):
         im1 = j - 1
 
         # Initialize the Runge-Kutta routine with zone i - 1 quantities and their derivatives.
@@ -289,17 +285,18 @@ def statstar(iteration, arg):
     print(tabulate(core_table, headers="firstrow"))
     print("----------------------------------------------")
 
+    f = open("results" + str(arg) + ".txt", 'w')
     f.write("R, P, T, Rho, Kappa, Epsilon, Qm, L_r, dlPlT\n")
     # Print data from the cetner of the start outward, labeling convective or radiative zones zones.
     for ic in range(0, i_stop):
         i = i_stop - ic
-        qm = 1.0 - m_r[i] / initial_cond["M_star_grams"]
+        qm = m_r[i] / initial_cond["M_star_grams"]
 
         results = [["i = " + str(i), ""], ["R [" + str(i) + "]", r[i]], ["Qm", qm], ["l_r[" + str(i) + "]", l_r[i]],
                    ["t[" + str(i) + "]", t[i]], ["p[" + str(i) + "]", p[i]], ["Rho[" + str(i) + "]", rho[i]],
                    ["Kappa[" + str(i) + "]", kappa[i]], ["Epsilon[" + str(i) + "]", epsilon[i]],
                    ["dl_pdl_t[" + str(i) + "]", dl_pdl_t[i]]]
-        line_text = str(r[i]/constants["Rsun"]) + ", " + str(p[i]) + ", " + str(t[i]) + ", " + str(rho[i]) + ", " + str(kappa[i]) + ", " + str(epsilon[i]) + ", " + str(qm) + ", " + str(l_r[i]) + ", " + str(dl_pdl_t[i])
+        line_text = str(r[i]/initial_cond["R_star_cm"]) + ", " + str(p[i]) + ", " + str(t[i]) + ", " + str(rho[i]) + ", " + str(kappa[i]) + ", " + str(epsilon[i]) + ", " + str(qm) + ", " + str(l_r[i]) + ", " + str(dl_pdl_t[i])
         f.write(line_text+"\n")
         print(tabulate(results, headers="firstrow", numalign="right"))
         print("------------------------")
@@ -323,9 +320,9 @@ def dm_dr(r, rho):
 
 
 # 'luminosity thingy
-def dl_dr(r, rho, epslon):
+def dl_dr(r, rho, epsilon):
     #dLdr
-    return 4 * constants["pi"] * rho * epslon * r**2
+    return 4 * constants["pi"] * rho * epsilon * r**2
 
 
 # 'The temp one
@@ -335,8 +332,8 @@ def dt_dr(r, m_r, l_r, t, rho, kappa, mu, irc):
         return -(3.0/(16.0 * constants["pi"] * constants["a"] * constants["c"])) * kappa * rho / t ** 3 * l_r / r ** 2
     else:
         #dTdr
-        return -1.0 / constants["gamrat"] * constants["G"] * m_r / r ** 2 * mu * constants["m_H"] / constants["k_B"]
-
+        return -(1.0 - 1/constants["gamma"]) * (constants["G"] * m_r / r ** 2) * (mu * constants["m_H"] / constants["k_B"])
+        #return -1.0 / constants["gamrat"] * constants["G"] * m_r / r ** 2 * mu * constants["m_H"] / constants["k_B"]
 
 # Returns r, M_rip1, L_rip1, T_ip1, P_ip1
 def startmdl(delta_r, x, z, mu, rs, r_i, m_ri, l_ri, tog_bf, irc):
@@ -362,10 +359,10 @@ def startmdl(delta_r, x, z, mu, rs, r_i, m_ri, l_ri, tog_bf, irc):
     return [r, m_rip1, l_rip1, t_ip1, p_ip1]
 
 def runge(f_im1, dfdr, f_i, r_im1, deltar, irc, x, z, xcno, mu):
-    f_temp = [0] * 4
-    df1 = [0] * 4
-    df2 = [0] * 4
-    df3 = [0] * 4
+    f_temp = [0.0] * 4
+    df1 = [0.0] * 4
+    df2 = [0.0] * 4
+    df3 = [0.0] * 4
     dr12 = deltar/2.0
     dr16 = deltar/6.0
     r12 = r_im1 + dr12
@@ -389,15 +386,15 @@ def fundeq(r, f, dfdr, irc, x, z, xcno, mu):
     m_r = f[1]
     l_r = f[2]
     t = f[3]
-    [rho, kappa, epslon, tog_bf] = eos(x, z, xcno, mu, p, t)
+    [rho, kappa, epsilon, tog_bf] = eos(x, z, xcno, mu, p, t)
     dfdr[0] = dp_dr(r, m_r, rho)
     dfdr[1] = dm_dr(r, rho)
-    dfdr[2] = dl_dr(r, rho, epslon)
+    dfdr[2] = dl_dr(r, rho, epsilon)
     dfdr[3] = dt_dr(r, m_r, l_r, t, rho, kappa, mu, irc)
 
 
 # instead of passing in ierr going to use the return as an error code. 0 for success.
-# Returns [rho, kappa, epslon, tog_bf]
+# Returns [rho, kappa, epsilon, tog_bf]
 def eos(x, z, xcno, mu, p, t):
 
     oneo3 = .333333333333
@@ -406,34 +403,36 @@ def eos(x, z, xcno, mu, p, t):
     # solve for density from the ideal gas law
     if t <= 0.0 or p <= 0.0:
         raise SystemExit(eos_format_dict["100"])
-    prad = constants['a'] * (t ** 4) / 3.0
+    prad = constants['a'] * (t ** 4.0) / 3.0
     pgas = p - prad
     rho = (mu * constants['m_H']/constants['k_B']) * (pgas / t)
     if rho < 0.0:
         raise SystemExit(eos_format_dict["200"])
-    # Calc opacity, including guillatine-to-gaunt factor ratio
 
-    tog_bf = 2.82 * (rho * (1 + x)) ** .2
-    k_bf = 4.34E25 / tog_bf * z*(1 + x) * rho / (t ** 3.5)
-    k_ff = 3.68E22 * constants["g_ff"] * (1 - z) * (1 + x) * rho / (t ** 3.5)
-    k_e = .2*(1 + x)
+    # Calc opacity, including guillotine-to-gaunt factor ratio
+
+    tog_bf = 2.82 * (rho * (1.0 + x)) ** .2
+    k_bf = 4.34E25 / tog_bf * z*(1.0 + x) * rho / (t ** 3.5)
+    k_ff = 3.68E22 * constants["g_ff"] * (1.0 - z) * (1.0 + x) * rho / (t ** 3.5)
+    k_e = .2*(1.0 + x)
     kappa = k_bf + k_ff + k_e
 
     #calc eneregy generation by pp chain and CNO cycle
     #The screening factor for the pp chain is calculated as fpp
 
-    t6 = t * 1E-6
-    fx = .133 * x * ((3 + x) * rho) ** .5 / t6 ** 1.5
-    fpp = 1 + fx * x
-    psipp = 1 + 1.412E8 * (1 / x - 1) * exp(-49.98 * t6 ** -oneo3)
-    cpp = 1 + .0123*t6*oneo3 + .0109*t6**(-twoo3) - .000149*t6
-    epspp = 2.38E6 * rho * x * x * fpp * psipp * cpp * t6 ** (-twoo3) * exp(-33.8 * t6 ** (-oneo3))
-    ccno = 1 + .0027*t6**oneo3 - .0078 * t6**twoo3 - .000149*t6
-    eps_cno = 8.67E27 * rho * x * xcno * ccno * t6 ** (-twoo3) * exp(-152.28 * t6 ** (-oneo3))
-    epslon = epspp + eps_cno
+    t6 = t * 1.0E-6
+    fx = .133 * x * sqrt((3.0 + x) * rho) / t6 ** 1.5
+    fpp = 1.0 + fx * x
+    psipp = 1.0 + 1.412E8 * (1.0 / x - 1.0) * exp(-49.98 * t6 ** -oneo3)
+    cpp = 1.0 + .0123*t6**oneo3 + .0109*t6**(twoo3) + .000938*t6
+    epspp = 2.38E6 * rho * x ** 2 * fpp * psipp * cpp * t6 ** (-twoo3) * np.exp(-33.8 * t6 ** (-oneo3))
+    ccno = 1.0 + .0027*t6**oneo3 - .00778 * t6**twoo3 - .000149*t6
+    eps_cno = 8.67E27 * rho * x * xcno * ccno * t6 ** (-twoo3) * np.exp(-152.28 * t6 ** (-oneo3))
+    epsilon = epspp + eps_cno
 
-    return [rho, kappa, epslon, tog_bf]
+    return [rho, kappa, epsilon, tog_bf]
 
-# for i in range(0,3)::
-statstar(0, [1, 1, 5700, .7, .02])
-statstar(0, [2, 5, 3000, .7, .02])
+
+statstar([1, 1, 5700, .73, .02])
+# statstar([2, 8, 6778, .73, .02])
+# statstar([10, 500, 10000, .7, .02])

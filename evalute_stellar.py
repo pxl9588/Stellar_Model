@@ -25,17 +25,49 @@ for i in g.read().split("\n")[:-1]:
             temp_data = np.insert(temp_data, 1, a, 0)
     collection.append(np.array(temp_data)[1:])
 data0 = collection[0]
-data1 = collection[1]
+#data1 = collection[1]
 data0_transpose = data0.transpose()
-data1_transpose = data1.transpose()
-x0 = data0_transpose[0][0:]
-y0 = data0_transpose[-1][0:]
-x1 = data1_transpose[0][0:]
-y1 = data1_transpose[-1][0:]
-fig,ax = plt.subplots()
-
-line1, = ax.plot(x0/x0[0], y0, label='2M')
-line2, = ax.plot(x1/x1[0], y1, label='1M')
-ax.legend()
-plt.ylim(top = 6, bottom = 0)
+#data1_transpose = data1.transpose()
+radius0 = data0_transpose[0][0:]
+print("Radius: " + str(radius0[0]))
+pres0 = data0_transpose[1][0:]
+print("Pressure: " + str(pres0[0]))
+temp0 = data0_transpose[2][0:]
+print("Temperature: " + str(temp0[0]))
+rho0 = data0_transpose[3][0:]
+print("Rho: " + str(rho0[0]))
+kappa0 = data0_transpose[4][0:]
+print("Kappa: " + str(kappa0[0]))
+eps0 = data0_transpose[5][0:]
+qm0 = data0_transpose[6][0:]
+lum0 = 4 * np.pi * radius0**2 * rho0 * eps0
+print("Luminosity: " + str(lum0[0]))
+dpt0 = data0_transpose[8][0:]
+print("dlnP/lnT: " + str(dpt0[0]))
+#x1 = data1_transpose[0][0:]
+#y1 = data1_transpose[-1][0:]
+fig, ((ax1, ax2, ax3), (ax4, ax5, ax6)) = plt.subplots(2, 3)
+#fig, ax = plt.subplot()
+ax1.plot(radius0, temp0)
+ax1.set_ylabel("T(r)")
+ax2.plot(radius0, pres0)
+ax2.set_ylabel("P(r)")
+ax3.plot(radius0, rho0)
+ax3.set_ylabel("Rho(r)")
+ax4.plot(radius0, kappa0)
+ax4.set_ylabel("K(r)")
+ax5.plot(radius0, lum0)
+ax5.set_ylabel("L(r)")
+ax6.plot(radius0, dpt0)
+ax6.set_ylabel("dlnP/lnT(r)")
+ax6.set_ylim(top=6, bottom=1)
+ax1.set_xlabel("r/R0")
+ax2.set_xlabel("r/R0")
+ax3.set_xlabel("r/R0")
+ax4.set_xlabel("r/R0")
+ax5.set_xlabel("r/R0")
+ax6.set_xlabel("r/R0")
+#ax2.plot(x1/x1[0], y1)
+#plt.ylim(top=6, bottom=0)
+plt.xlabel('r/Ro')
 plt.show()
